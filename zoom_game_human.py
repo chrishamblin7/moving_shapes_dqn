@@ -19,7 +19,7 @@ os.environ["SDL_VIDEO_CENTERED"] = "1"
 pygame.init()
 
 automated = False
-max_dim = int(50)
+max_dim = int(500)
 num_shapes = 7
 shape_size = int(10)
 #target_size = int(player_size+2)
@@ -272,10 +272,7 @@ def get_state_image(state,name='none'):
         scipy.misc.imsave('images/%s'%name,imarray)
 
 def random_transformation(shapes,zoom):
-	if target_screen:
-		old_shapes = []
-		for shape in shapes:
-			old_shapes.append([shape.rotations,shape.rotation])   #store original rotations and rotation index
+
 	active_shape = 0
 	action_list = []
 	for i in range(len(shapes)):
