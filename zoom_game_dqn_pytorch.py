@@ -76,23 +76,20 @@ screen = pygame.display.set_mode((max_dim,max_dim))
 pygame.display.set_caption("Line Up Shapes")
 
 
-def update_parameters(spaces_list = spaces_list,rotations_list = rotations_list, zoom_list=zoom_list,max_dim = max_dim,shape_size = shape_size, screen=screen):
-	spaces = int(random.choice(spaces_list))
-	stride = int(max_dim/spaces)
-	phase = int(np.random.choice(list(range(stride))))
-	num_rotations = int(random.choice(rotations_list))
-	zoom = random.choice(zoom_list)
+def update_parameters(args, screen=screen):
+	spaces = int(args.win_dim/args.trans_step)
+	phase = int(np.random.choice(list(range(args.trans_step))))
 	shapes = {}
-	shape_positions = list(range(int(shape_size/2+phase),int(max_dim-shape_size/2+phase),stride))
+	shape_positions = list(range(int(args.shape_size/2+phase),int(args.win_dim-args.shape_size/2+phase),args.trans_step))
 	shapes = []
-	for s in range(num_shapes):
-		shape = Polygon(screen,stride,num_rotations,max_dim,zoom)
-		while shape.area < (max_dim/10)**2:
-			shape = Polygon(screen,stride,num_rotations,max_dim,zoom)
+	for s in range(args.num_shapes):
+		shape = Polygon(screen,args.trans_step,args.num_rotations,args.win_dim,args.zoom_ratio)
+		while shape.area < (args.win_dim/10)**2:
+			shape = Polygon(screen,args.trans_step,num_rotations,args.win_dim,args.zoom_ratio)
 		shape_pos = (np.random.choice(shape_positions),np.random.choice(shape_positions))
 		shape.translate((shape_pos[0]-shape.centroid[0],shape_pos[1]-shape.centroid[1]))
 		shapes.append(deepcopy(shape))
-	return stride,phase,zoom,shapes
+	return phase, shapes
 
 def get_screen(screen = screen,flatten = False, grey_scale = True):
 	npscreen = pygame.surfarray.array3d(screen)  # transpose into torch order (CHW)
@@ -152,10 +149,10 @@ class Polygon(object):
 		y = [p[1] for p in pl]
 		return (sum(x) / len(pl), sum(y) / len(pl))
 
-	def __init__(self,screen,stride,num_rotations,max_dim,zoom,num_points = 'random',points_list = 'random'):
+	def __init__(self,screen,stride,num_rotations,win_dim,zoom_ratio,num_points = 'random',points_list = 'random'):
 		self.num_rotations = num_rotations
 		self.stride = stride
-		self.max_dim = max_dim
+		self.win_dim = win_dim
 		self.zoom = zoom
 		if points_list != 'random':
 			self.points_list = points_list
@@ -165,7 +162,7 @@ class Polygon(object):
 				self.num_points = num_points
 			else:
 				self.num_points = int(np.random.choice([3,4,5,6]))
-			self.points_list = random_polygon.gen_polygon(int(max_dim/2-max_dim/5),int(max_dim/2+max_dim/5),self.num_points)
+			self.points_list = random_polygon.gen_polygon(int(win_dim/2-win_dim/5),int(win_dim/2+win_dim/5),self.num_points)
 
 		self.area = self.get_area(self.points_list) 		
 		self.centroid = self.get_centroid(self.points_list)
@@ -264,18 +261,18 @@ def draw_screen(shapes,active_shape,screen=screen):
 	shapes[active_shape].draw(screen,color=RED)
 
 #global transformations
-def zoom_screen(direction, shapes, zoom, max_dim = max_dim):
-	center = (int(max_dim/2),int(max_dim/2))
+def zoom_screen(direction, shapes, zoom_ratio, win_dim):
+	center = (int(win_dim/2),int(win_dim/2))
 	for shape in shapes:
 		for i in range(len(shape.rotations)):
 			new_points_list = []
 			for point in shape.rotations[i]:
-				new_points_list.append(((zoom**direction)*(point[0]-center[0])+center[0], (zoom**direction)*(point[1]-center[1])+center[1]))
+				new_points_list.append(((zoom_ratio**direction)*(point[0]-center[0])+center[0], (zoom_ratio**direction)*(point[1]-center[1])+center[1]))
 			shape.rotations[i] = new_points_list
 			shape.points_list = shape.rotations[shape.rotation]
 			shape.centroid = shape.get_centroid(shape.points_list)
 
-def translate_screen(direction, shapes, max_dim = max_dim):
+def translate_screen(direction, shapes, win_dim):
 	for shape in shapes:
 		if direction == 0:
 			shape.translate((-1*shape.stride, 0))
@@ -286,7 +283,7 @@ def translate_screen(direction, shapes, max_dim = max_dim):
 		if direction == 3:
 			shape.translate((0, shape.stride))
 
-def random_transformation(shapes,zoom):
+def random_transformation(shapes,zoom_ratio,win_dim):
 	if target_screen:
 		old_shapes = []
 		for shape in shapes:
@@ -331,21 +328,21 @@ def random_transformation(shapes,zoom):
 			shapes[active_shape].robo_action(i)
 		#Translate
 		elif i == 9:
-			translate_screen(0, shapes)
+			translate_screen(0, shapes,win_dim)
 		elif i == 10:
-			translate_screen(1, shapes)
+			translate_screen(1, shapes,win_dim)
 		elif i == 11:
-			translate_screen(2, shapes)
+			translate_screen(2, shapes,win_dim)
 		elif i == 12:
-			translate_screen(3, shapes)
+			translate_screen(3, shapeswin_dim)
 		#zoom
 		elif i == 13:
-			zoom_screen(-1, shapes, zoom)
+			zoom_screen(-1, shapes, zoom_ratio)
 		elif i == 14:
-			zoom_screen(1, shapes, zoom)
+			zoom_screen(1, shapes, zoom_ratio)
 
 
-def makeMove(action, shapes, active_shape, screen, targetscreen, save=True):
+def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_dim):
 
     screen.fill((0, 0, 0))
     #Draw Shapes
@@ -355,18 +352,18 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, save=True):
 		shapes[active_shape].robo_action(action)
 	#Translate
 	elif action == 9:
-		translate_screen(0, shapes)
+		translate_screen(0, shapes,win_dim)
 	elif action == 10:
-		translate_screen(1, shapes)
+		translate_screen(1, shapes,win_dim)
 	elif action == 11:
-		translate_screen(2, shapes)
+		translate_screen(2, shapes,win_dim)
 	elif action == 12:
-		translate_screen(3, shapes)
+		translate_screen(3, shapes,win_dim)
 	#zoom
 	elif action == 13:
-		zoom_screen(-1, shapes, zoom)
+		zoom_screen(-1, shapes, zoom_ratio)
 	elif action == 14:
-		zoom_screen(1, shapes, zoom)
+		zoom_screen(1, shapes, zoom_ratio)
 
 	draw_screen(shapes,active_shape)
     pygame.display.update()
@@ -377,7 +374,7 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, save=True):
     return currentscreen3d, currentscreen, state
 
 
-def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 10):
+def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
 	if reward_type == 'pointwise':
 		contrast = currentscreen - targetscreen
 		unique, counts = np.unique(contrast, return_counts=True)
@@ -394,7 +391,7 @@ def save_model(model,name):
     model.save_weights("models/%s.h5"%name)
     print("Saved model to disk")
 
-def get_state_image(state,name='none'):
+def get_state_image(state,win_dim,name='none'):
     '''utility function to save an image of the numpy 'state', to make sure it matches game display'''
     if state.ndim == 1:
         imarray = np.reshape(state,(int(np.sqrt(len(state))),int(np.sqrt(len(state)))))
@@ -405,7 +402,7 @@ def get_state_image(state,name='none'):
     	imarray = imarray.transpose(1,0,2)
     else:
         imarray = state.transpose(1,0,2)
-        imarray = imarray.reshape(max_dim,max_dim)
+        imarray = imarray.reshape(win_dim,win_dim)
     imarray[imarray > 0] = 255
     imarray[imarray != 255] = 0
     if name == 'none':
@@ -415,7 +412,7 @@ def get_state_image(state,name='none'):
 
 ###MODEL###
 
-in_dim = (max_dim,max_dim,4)
+in_dim = (args.win_dim,args.win_dim,4)
 rms = RMSprop()
 adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
 
@@ -454,14 +451,14 @@ else:
 
 ### initial start game initialization (might be redundant code)###
 clock = pygame.time.Clock()
-stride,phase,zoom,shapes = update_parameters()
+phase, shapes = update_parameters(args,screen)
 active_shape = 0
 
 ### RUN MODEL WITH EXPERIENCE REPLAY ###
 model.compile(loss='mse', optimizer=rms)#reset weights of neural network
 
-inputl_shape = (1,max_dim,max_dim,4)
-data_shape = (max_dim,max_dim,4)
+inputl_shape = (1,args.win_dim,args.win_dim,4)
+data_shape = (args.win_dim,args.win_dim,4)
 
 replay = []
 #stores tuples of (S, A, R, S')
@@ -471,7 +468,7 @@ for i in range(epochs):
     print('epoch %s'%i)
     #pdb.set_trace()
 
-    stride,phase,zoom,shapes = update_parameters()
+    phase, shapes = update_parameters(args,screen)
 
 	draw_screen(shapes,active_shape)
 
@@ -484,7 +481,7 @@ for i in range(epochs):
 	good_transform = False
 	print('finding good transform . . .')
 	while not good_transform:  
-    	random_transformation(shapes,zoom)            # randomly transform state 
+    	random_transformation(shapes,args.zoom_ratio,args.win_dim)            # randomly transform state 
     	draw_screen(shapes,active_shape)   
     	pygame.display.update()
     	targetscreen = get_screen(screen, grey_scale=True)   #store target as grey scale
@@ -520,7 +517,7 @@ for i in range(epochs):
             action = (np.argmax(qval))
             print('action %s: Q policy'%action)
         #Take action, observe new state S'
-        currentscreen3d, currentscreen, new_state = makeMove(action, shapes, active_shape, screen, targetscreen)
+        currentscreen3d, currentscreen, new_state = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
         #Observe reward
         getReward(currentscreen,targetscreen, reward_type = 'pointwise')
         print('Reward: %s'%reward)
@@ -623,20 +620,6 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--model', type=str, default='dqn_basic', metavar='M',
                         help='neural net model to use (default: dqn_basic, other options: dist_dqn, rainbow_dqn)')
-
-
-spaces_list = [int(max_dim/5)]
-#rotations_list = [4,8,16]
-rotations_list = [64]
-zoom_list = [1.2]
-max_moves = 40
-
-epochs = 4501
-gamma = 0.975
-epsilon = 1
-batchSize = 100
-buffer = 20000
-
 
     args = parser.parse_args()
     print('running with args:')
