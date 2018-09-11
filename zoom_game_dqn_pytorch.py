@@ -28,53 +28,220 @@ import dqn_basic
 import dist_dqn
 import rainbow_dqn
 
-
-start = time.time()
-
-
-os.environ["SDL_VIDEO_CENTERED"] = "1"
+def main():
+	start = time.time()    #Get Start time for logging timings
 
 
-with_window = True
-model_kind = 'atari'
-automated = False
-max_dim = int(500)
-num_shapes = 7
-shape_size = int(10)
-#target_size = int(player_size+2)
-#spaces_list = [int(max_dim/10),int(max_dim/5),int(max_dim/2)]
-spaces_list = [int(max_dim/5)]
-#rotations_list = [4,8,16]
-rotations_list = [64]
-zoom_list = [1.2]
-max_moves = 40
+	########   SETTINGS   ###########
 
-epochs = 4501
-gamma = 0.975
-epsilon = 1
-batchSize = 100
-buffer = 20000
+    # Command Line Arguments
+    parser = argparse.ArgumentParser(description='PyTorch dqn shape moving game')
+    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
+                        help='input batch size for training (default: 100)')
+    parser.add_argument('--epochs', type=int, default=4001, metavar='N',
+                        help='number of epochs to train (default: 4000)')
+    parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
+                        help='learning rate (default: 0.0001)')
+    parser.add_argument('--gamma', type=float, default=0.975, metavar='G',
+                        help='discount factor for future reward (default: 0.975)')
+    parser.add_argument('--buffer', type=int, default=20000, metavar='B',
+                        help='Number of states to store in exp_replay (default: 20000)')
+    parser.add_argument('--max_moves', type=int, default=40, metavar='MM',
+                        help='Max moves before reinitializing (default: 20000)')    
+    parser.add_argument('--win_dim', type=int, default=84, metavar='WD',
+                        help='window dimension, input int, win = int x int (default: 84)')
+    parser.add_argument('--shape_size', type=int, default=8, metavar='SS',
+                        help='Average size of intial game shapes (default: 8)')
+    parser.add_argument('--num_shapes', type=int, default=4, metavar='NS',
+                        help='Number of shapes in game (default: 4)')
+    parser.add_argument('--trans_step', type=int, default=4, metavar='TS',
+                        help='Number of pixels jumped when translating shape (default: 4)')
+    parser.add_argument('--zoom_ratio', type=float, default=1.2, metavar='ZR',
+                        help='Scaling ratio when zooming (default: 1.2)')
+    parser.add_argument('--num_rotations', type=int, default=32, metavar='NR',
+                        help='Number of discrete rotation positions (default: 32)')    
+    parser.add_argument('--no-cuda', action='store_true', default=False,
+                        help='disables CUDA training')
+    parser.add_argument('--show_window', action='store_true', default=False,
+                        help='show game window while running')
+    parser.add_argument('--seed', type=int, default=2, metavar='S',
+                        help='random seed (default: 2)')
+    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+                        help='how many batches to wait before logging training status')
+    parser.add_argument('--model', type=str, default='dqn_basic', metavar='M',
+                        help='neural net model to use (default: dqn_basic, other options: dist_dqn, rainbow_dqn)')
+
+    #Hardware setting (GPU vs CPU)
+    args = parser.parse_args()
+    print('running with args:')
+    print(args)
+    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    if use_cuda:
+        print('using cuda')
+    #seed
+    torch.manual_seed(args.seed)
+    device = torch.device("cuda" if use_cuda else "cpu")
+    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+
+    #initialize model
+    model_dict = {'dqn_basic':dqn_basic.DQN,
+                  'dist_dqn':dist_dqn.DistributionalDQN,
+                  'rainbow_dqn':rainbow_dqn.RainbowDQN
+				 }
+    model = model_dict[args.model](num_classes=args.cutoff).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+    #Window Settings
+	os.environ["SDL_VIDEO_CENTERED"] = "1"
+	#for running on cluster with no graphics
+	if not args.show_window:
+	    os.putenv('SDL_VIDEODRIVER', 'fbcon')
+	    os.environ["SDL_VIDEODRIVER"] = "dummy"
+	# Colors
+	BLACK = (  0,   0,   0)
+	WHITE = (255, 255, 255)
+	RED = (255,   0,   0)
+	GREEN = (  0, 255,   0)
+	BLUE = (  0,   0, 255)
+
+	#initialize game
+	pygame.init()
+	screen = pygame.display.set_mode((args.win_dim,args.win_dim))
+	pygame.display.set_caption("Move the Shapes to Match the Target Image")
+	clock = pygame.time.Clock()
+
+	#######    RUN GAME     #######
+
+	#model.compile(loss='mse', optimizer=rms)#reset weights of neural network
+
+	inputl_shape = (1,args.win_dim,args.win_dim,4)
+	data_shape = (args.win_dim,args.win_dim,4)
+
+	#stores tuples of (S, A, R, S')
+	replay = []
+	h = 0
+
+	for i in range(epochs):
+	    print('epoch %s'%i)
+
+	    #initialize state
+	    phase, shapes = update_parameters(args,screen)
+		draw_screen(shapes,active_shape)
+	    pygame.display.update()
+
+	    #Generate Target image
+	    currentscreen3d = get_screen(screen, grey_scale=False)  #get state as 3 channel image
+	    currentscreen = get_screen(screen)
+	    stored_shapes = deepcopy(shapes)              #store state   of shape objects
+		stored_active_shape = deepcopy(active_shape)
+		good_transform = False
+		while not good_transform:  
+	    	random_transformation(shapes,args.zoom_ratio,args.win_dim)            # randomly transform state 
+	    	draw_screen(shapes,active_shape)   
+	    	pygame.display.update()
+	    	targetscreen = get_screen(screen, grey_scale=True)   #store target as grey scale
+	    	#print(currentscreen.shape)
+	    	#print(currentscreen3d.shape)
+	    	#print(currentscreen3d)
+	    	#print(targetscreen.shape)
+	    	state = np.concatenate((currentscreen3d,np.array([targetscreen])))
+	    	shapes = deepcopy(stored_shapes)
+			active_shape = deepcopy(stored_active_shape)
+			draw_screen(shapes,active_shape)
+			pygame.display.update()
+			if get_pix_ratio:      # check to make sure our target is not all white or all black
+				good_transformation = True  
 
 
-BLACK = (  0,   0,   0)
-WHITE = (255, 255, 255)
-RED = (255,   0,   0)
-GREEN = (  0, 255,   0)
-BLUE = (  0,   0, 255)
+	    #get_state_image(state)
+	    status = 1
+	    #while game still in progress
+	    iters = 0
+	    while(status == 1):
+	        iters += 1
+	        print('move %s'%iters)
+	        #We are in state S
+	        #Let's run our Q function on S to get Q values for all possible actions
+	        qval = model.predict(state, batch_size=1)
+	        #optimal_options = optimal_action(player,target)
+	        #suboptimal_options = suboptimal_action(optimal_options)
+	        if (random.random() < epsilon):
+	            action = np.random.randint(0,15)
+	            print('action %s'%action)
+	        else: #choose best action from Q(s,a) values
+	            action = (np.argmax(qval))
+	            print('action %s: Q policy'%action)
+	        #Take action, observe new state S'
+	        currentscreen3d, currentscreen, new_state = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
+	        #Observe reward
+	        getReward(currentscreen,targetscreen, reward_type = 'pointwise')
+	        print('Reward: %s'%reward)
+	        print('Qval from model: %s'%qval)
+
+	        #Experience replay storage
+	        if (len(replay) < buffer): #if buffer not filled, add to it
+	            replay.append((state, action, reward, new_state))
+	        else: #if buffer full, overwrite old values
+	            if (h < (buffer-1)):
+	                h += 1
+	            else:
+	                h = 0
+	            replay[h] = (state, action, reward, new_state)
+	            #randomly sample our experience replay memory
+	            minibatch = random.sample(replay, batch_size)
+	            X_train = []
+	            y_train = []
+	            for memory in minibatch:
+	                #Get max_Q(S',a)
+	                old_state_memory, action_memory, reward_memory, new_state_memory = memory
+	                old_qval = model.predict(old_state_memory.reshape(inputl_shape), batch_size=1)
+	                newQ = model.predict(new_state_memory.reshape(inputl_shape), batch_size=1)
+	                maxQ = np.max(newQ)
+	                y = np.zeros((1,num_actions))
+	                y[:] = old_qval[:]
+	                #if reward_memory != 10: #non-terminal state
+	                update = (reward_memory + (gamma * maxQ))
+	                #else: #terminal state
+	                #	update = reward_memory
+	                y[0][action_memory] = update
+	                X_train.append(old_state_memory.reshape(data_shape))
+	                y_train.append(y.reshape(num_actions,))
+
+	            X_train = np.array(X_train)
+	            y_train = np.array(y_train)
+	            print("Game #: %s" % (i,))
+	            model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=1, verbose=1)
+	        #pdb.set_trace()
+	        state = new_state
+	        #debugging
+	        #if not (len(replay) < buffer):
+	        #    pdb.set_trace()
+	        if iters > max_moves: #if reached terminal state, or too many moves taken update game status
+	            status = 0
+	        #clear_output(wait=True)
+	    if epsilon > 0.1: #decrement epsilon over time
+	        epsilon -= (1/epochs)
+	        #epsilon -= (1/100)
+	    if i in checkpoints:
+	        end = time.time()
+	        elapse_time = end -start
+	        print('TIME to epoch %s: %s'%(i,elapse_time))
+	        save_model(model,'%sepoch_%s'%(i,model_kind))
+	#pygame.quit()
+
+	# serialize model to JSON
+	model_json = model.to_json()
+	with open("models/model.json", "w") as json_file:
+	    json_file.write(model_json)
+	# serialize weights to HDF5
+	model.save_weights("models/model.h5")
+	print("Saved model to disk")
 
 
-#for running on cluster with no graphics
-if not with_window:
-    os.putenv('SDL_VIDEODRIVER', 'fbcon')
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 
-pygame.init()
 
-screen = pygame.display.set_mode((max_dim,max_dim))
-
-pygame.display.set_caption("Line Up Shapes")
-
+#######   FUNCTIONS    ########
 
 def update_parameters(args, screen=screen):
 	spaces = int(args.win_dim/args.trans_step)
@@ -92,24 +259,20 @@ def update_parameters(args, screen=screen):
 	return phase, shapes
 
 def get_screen(screen = screen,flatten = False, grey_scale = True):
-	npscreen = pygame.surfarray.array3d(screen)  # transpose into torch order (CHW)
+	npscreen = pygame.surfarray.array3d(screen).transpose((2, 0, 1))  # transpose into torch order (CHW)
 	npscreen = np.ascontiguousarray(npscreen, dtype=np.float32) / 255
 	if grey_scale:
-		new_screen = np.zeros((npscreen.shape[0],npscreen.shape[1]))
+		new_screen = np.zeros((npscreen.shape[1],npscreen.shape[2]))
 		for h in range(new_screen.shape[0]):
 			for w in range(new_screen.shape[1]):
-				for c in range(npscreen.shape[2]):
-					if npscreen[h,w,c] != 0:
+				for c in range(npscreen.shape[0]):
+					if npscreen[c,h,w] != 0:
 						new_screen[h,w] = 1
 						break
 		npscreen = new_screen
 	if flatten:
 		npscreen = npscreen.flatten()
-
-	# Resize, and add a batch dimension (BCHW)
 	return npscreen
-
-
 
 def get_pix_ratio(npscreen):
 	unique_ls = np.unique(npscreen)
@@ -117,6 +280,25 @@ def get_pix_ratio(npscreen):
 		return False
 	else:
 		return True
+
+def get_state_image(state,win_dim,name='none'):
+    '''utility function to save an image of the numpy 'state', to make sure it matches game display'''
+    if state.ndim == 1:
+        imarray = np.reshape(state,(int(np.sqrt(len(state))),int(np.sqrt(len(state)))))
+        imarray = np.array([imarray,imarray,imarray])
+        imarray = imarray.transpose(2,1,0)
+    elif state.ndim == 2:
+    	imarray = np.array([state,state,state])
+    	imarray = imarray.transpose(2,1,0)
+    else:
+        imarray = state.transpose(2,1,0)
+        imarray = imarray.reshape(max_dim,max_dim)
+    imarray[imarray > 0] = 255
+    imarray[imarray != 255] = 0
+    if name == 'none':
+        scipy.misc.imsave('images/state_%s.png'%time.time(),imarray)
+    else:
+        scipy.misc.imsave('images/%s'%name,imarray)
 
 
 class Polygon(object):
@@ -375,6 +557,7 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_
 
 
 def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
+
 	if reward_type == 'pointwise':
 		contrast = currentscreen - targetscreen
 		unique, counts = np.unique(contrast, return_counts=True)
@@ -391,24 +574,14 @@ def save_model(model,name):
     model.save_weights("models/%s.h5"%name)
     print("Saved model to disk")
 
-def get_state_image(state,win_dim,name='none'):
-    '''utility function to save an image of the numpy 'state', to make sure it matches game display'''
-    if state.ndim == 1:
-        imarray = np.reshape(state,(int(np.sqrt(len(state))),int(np.sqrt(len(state)))))
-        imarray = np.array([imarray,imarray,imarray])
-        imarray = imarray.transpose(1,0,2)
-    elif state.ndim == 2:
-    	imarray = np.array([state,state,state])
-    	imarray = imarray.transpose(1,0,2)
-    else:
-        imarray = state.transpose(1,0,2)
-        imarray = imarray.reshape(win_dim,win_dim)
-    imarray[imarray > 0] = 255
-    imarray[imarray != 255] = 0
-    if name == 'none':
-        scipy.misc.imsave('images/state_%s.png'%time.time(),imarray)
-    else:
-        scipy.misc.imsave('images/%s'%name,imarray)
+
+
+
+
+
+
+
+
 
 ###MODEL###
 
@@ -447,218 +620,8 @@ else:
     model.compile(loss='mse', optimizer=adam)
 
 
-### RUN GAME ###
-
-### initial start game initialization (might be redundant code)###
-clock = pygame.time.Clock()
-phase, shapes = update_parameters(args,screen)
-active_shape = 0
-
-### RUN MODEL WITH EXPERIENCE REPLAY ###
-model.compile(loss='mse', optimizer=rms)#reset weights of neural network
-
-inputl_shape = (1,args.win_dim,args.win_dim,4)
-data_shape = (args.win_dim,args.win_dim,4)
-
-replay = []
-#stores tuples of (S, A, R, S')
-h = 0
-#pdb.set_trace()
-for i in range(epochs):
-    print('epoch %s'%i)
-    #pdb.set_trace()
-
-    phase, shapes = update_parameters(args,screen)
-
-	draw_screen(shapes,active_shape)
-
-    pygame.display.update()
-
-    currentscreen3d = get_screen(screen, grey_scale=False)  #get state as 3 channel image
-    currentscreen = get_screen(screen)
-    stored_shapes = deepcopy(shapes)              #store state   of shape objects
-	stored_active_shape = deepcopy(active_shape)
-	good_transform = False
-	print('finding good transform . . .')
-	while not good_transform:  
-    	random_transformation(shapes,args.zoom_ratio,args.win_dim)            # randomly transform state 
-    	draw_screen(shapes,active_shape)   
-    	pygame.display.update()
-    	targetscreen = get_screen(screen, grey_scale=True)   #store target as grey scale
-    	print(currentscreen.shape)
-    	print(currentscreen3d.shape)
-    	print(currentscreen3d)
-    	print(targetscreen.shape)
-    	state = np.concatenate((currentscreen3d,np.array([targetscreen])))
-    	shapes = deepcopy(stored_shapes)
-		active_shape = deepcopy(stored_active_shape)
-		draw_screen(shapes,active_shape)
-		pygame.display.update()
-		if get_pix_ratio:      # check to make sure our target is not all white or all black
-			good_transformation = True  
-
-	print('found')
-    #get_state_image(state)
-    status = 1
-    #while game still in progress
-    iters = 0
-    while(status == 1):
-        iters += 1
-        print('move %s'%iters)
-        #We are in state S
-        #Let's run our Q function on S to get Q values for all possible actions
-        qval = model.predict(state, batch_size=1)
-        #optimal_options = optimal_action(player,target)
-        #suboptimal_options = suboptimal_action(optimal_options)
-        if (random.random() < epsilon):
-            action = np.random.randint(0,15)
-            print('action %s'%action)
-        else: #choose best action from Q(s,a) values
-            action = (np.argmax(qval))
-            print('action %s: Q policy'%action)
-        #Take action, observe new state S'
-        currentscreen3d, currentscreen, new_state = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
-        #Observe reward
-        getReward(currentscreen,targetscreen, reward_type = 'pointwise')
-        print('Reward: %s'%reward)
-        print('Qval from model: %s'%qval)
-
-        #Experience replay storage
-        if (len(replay) < buffer): #if buffer not filled, add to it
-            replay.append((state, action, reward, new_state))
-        else: #if buffer full, overwrite old values
-            if (h < (buffer-1)):
-                h += 1
-            else:
-                h = 0
-            replay[h] = (state, action, reward, new_state)
-            #randomly sample our experience replay memory
-            minibatch = random.sample(replay, batchSize)
-            X_train = []
-            y_train = []
-            for memory in minibatch:
-                #Get max_Q(S',a)
-                old_state_memory, action_memory, reward_memory, new_state_memory = memory
-                old_qval = model.predict(old_state_memory.reshape(inputl_shape), batch_size=1)
-                newQ = model.predict(new_state_memory.reshape(inputl_shape), batch_size=1)
-                maxQ = np.max(newQ)
-                y = np.zeros((1,num_actions))
-                y[:] = old_qval[:]
-                #if reward_memory != 10: #non-terminal state
-                update = (reward_memory + (gamma * maxQ))
-                #else: #terminal state
-                #	update = reward_memory
-                y[0][action_memory] = update
-                X_train.append(old_state_memory.reshape(data_shape))
-                y_train.append(y.reshape(num_actions,))
-
-            X_train = np.array(X_train)
-            y_train = np.array(y_train)
-            print("Game #: %s" % (i,))
-            model.fit(X_train, y_train, batch_size=batchSize, nb_epoch=1, verbose=1)
-        #pdb.set_trace()
-        state = new_state
-        #debugging
-        #if not (len(replay) < buffer):
-        #    pdb.set_trace()
-        if iters > max_moves: #if reached terminal state, or too many moves taken update game status
-            status = 0
-        #clear_output(wait=True)
-    if epsilon > 0.1: #decrement epsilon over time
-        epsilon -= (1/epochs)
-        #epsilon -= (1/100)
-    if i in checkpoints:
-        end = time.time()
-        elapse_time = end -start
-        print('TIME to epoch %s: %s'%(i,elapse_time))
-        save_model(model,'%sepoch_%s'%(i,model_kind))
-#pygame.quit()
-
-# serialize model to JSON
-model_json = model.to_json()
-with open("models/model.json", "w") as json_file:
-    json_file.write(model_json)
-# serialize weights to HDF5
-model.save_weights("models/model.h5")
-print("Saved model to disk")
 
 
-def main():
-    # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch dqn shape moving game')
-    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
-                        help='input batch size for training (default: 100)')
-    parser.add_argument('--epochs', type=int, default=4001, metavar='N',
-                        help='number of epochs to train (default: 4000)')
-    parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
-                        help='learning rate (default: 0.0001)')
-    parser.add_argument('--gamma', type=float, default=0.975, metavar='G',
-                        help='discount factor for future reward (default: 0.975)')
-    parser.add_argument('--buffer', type=int, default=20000, metavar='B',
-                        help='Number of states to store in exp_replay (default: 20000)')
-    parser.add_argument('--max_moves', type=int, default=40, metavar='MM',
-                        help='Max moves before reinitializing (default: 20000)')    
-    parser.add_argument('--win_dim', type=int, default=84, metavar='WD',
-                        help='window dimension, input int, win = int x int (default: 84)')
-    parser.add_argument('--shape_size', type=int, default=8, metavar='SS',
-                        help='Average size of intial game shapes (default: 8)')
-    parser.add_argument('--num_shapes', type=int, default=4, metavar='NS',
-                        help='Number of shapes in game (default: 4)')
-    parser.add_argument('--trans_step', type=int, default=4, metavar='TS',
-                        help='Number of pixels jumped when translating shape (default: 4)')
-    parser.add_argument('--zoom_ratio', type=float, default=1.2, metavar='ZR',
-                        help='Scaling ratio when zooming (default: 1.2)')
-    parser.add_argument('--num_rotations', type=int, default=32, metavar='NR',
-                        help='Number of discrete rotation positions (default: 32)')    
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--show_window', action='store_true', default=False,
-                        help='show game window while running')
-    parser.add_argument('--seed', type=int, default=2, metavar='S',
-                        help='random seed (default: 2)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='how many batches to wait before logging training status')
-    parser.add_argument('--model', type=str, default='dqn_basic', metavar='M',
-                        help='neural net model to use (default: dqn_basic, other options: dist_dqn, rainbow_dqn)')
-
-    args = parser.parse_args()
-    print('running with args:')
-    print(args)
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
-    if use_cuda:
-        print('using cuda')
-
-    torch.manual_seed(args.seed)
-
-    device = torch.device("cuda" if use_cuda else "cpu")
-
-    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
-
-    model_dict = {'dqn_basic':dqn_basic.DQN,
-                  'dist_dqn':dist_dqn.DistributionalDQN,
-                  'rainbow_dqn':rainbow_dqn.RainbowDQN
-				 }
-
-    model = model_dict[args.model](num_classes=args.cutoff).to(device)
-
-
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-
-    args.outputdir = '%s_%s_cutoff%s_adam2_%s'%(args.input_data.replace('/','_'),args.model.split('.')[-1],args.cutoff,time.strftime('%m-%d-%Y'))
-
-    if args.save_outputs:
-        if not os.path.exists(os.path.join('outputs',args.outputdir)):
-            os.mkdir(os.path.join('outputs',args.outputdir))
-        args.testing_log = open(os.path.join('outputs',args.outputdir,'testing_log.csv'),'w+')
-        for i in range(1,args.cutoff+1):
-             args.testing_log.write('%s acc,%s guessed,%s F1'%(str(i),str(i),str(i)))
-        args.testing_log.write('\n')
-        args.testing_log.flush()
-
-    #writing to tensorboard
-    ##writer.add_graph(model,next(iter(train_loader))[0])    
-    
-    model_epochs = [47]
     
     for epoch in range(1, args.epochs + 1):
         #adjust learning rate
@@ -672,6 +635,9 @@ def main():
         test(args, model, device, test_loader, epoch)
         if args.save_model and epoch in model_epochs:
             torch.save(model,os.path.join('outputs',args.outputdir,'model_%s.pt'%str(epoch)))
+
+
+
 
 
 
