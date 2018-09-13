@@ -597,6 +597,8 @@ def predict(data, model, device, args, numpy_out = True):
 		net_input = net_input.to(device)
 		output = model(net_input)
 		if numpy_out:
+			if device != 'cpu':
+				output = output.to('cpu')
 			return output.numpy()
 		else:
 			return output
