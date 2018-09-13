@@ -243,4 +243,4 @@ if __name__ == "__main__":
                 writer.add_scalar("values_mean", mean_val, frame_idx)
 
             if SAVE_STATES_IMG and frame_idx % 10000 == 0:
-save_state_images(frame_idx, eval_states, net, cuda=args.cuda)
+                save_state_images(frame_idx, eval_states, net, cuda=args.cuda)

@@ -1,6 +1,7 @@
 import random
 from pygame.locals import *
 import os
+import argparse
 import random
 import pygame
 import math
@@ -25,10 +26,10 @@ from torch.autograd import Variable
 sys.path.insert(0,'utility/')
 from pytorch_utils import to_torch_net_input
 
-sys.path.insert(0,'models/scipts/')
+sys.path.insert(0,'models/scripts/')
 import dqn_basic
-import dist_dqn
-import rainbow_dqn
+#import dist_dqn
+#import rainbow_dqn
 
 np.set_printoptions(threshold=np.inf)
 
@@ -78,14 +79,18 @@ def main():
 						help='loss function to use (default: mse, other options: cross_entropy)')
 	parser.add_argument('--save-interval', type=int, default=500, metavar='SI',
 						help='Save model every (save-interal) epochs (default: 500)')
+
+	args = parser.parse_args()
+	print('running with args:')
+	print(args)
+
+
 	#non command-line arguments
 	n_actions = 15
 	net_input_dim = (4,args.win_dim,args.win_dim)
 
 	#Hardware setting (GPU vs CPU)
-	args = parser.parse_args()
-	print('running with args:')
-	print(args)
+
 	use_cuda = not args.no_cuda and torch.cuda.is_available()
 	if use_cuda:
 		print('using cuda')
@@ -95,14 +100,12 @@ def main():
 	kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
 	#initialize model
-	model_dict = {'dqn_basic':dqn_basic.DQN,
-				  'dist_dqn':dist_dqn.DistributionalDQN,
-				  'rainbow_dqn':rainbow_dqn.RainbowDQN
-				 }
+	model_dict = {'dqn_basic':dqn_basic.DQN}
 	model = model_dict[args.model](net_input_dim,n_actions).to(device)
 
 	loss_dict = {'mse':nn.MSELoss(),
 				 'cross_entropy':nn.CrossEntropyLoss()}
+	loss_func = loss_dict[args.loss]
 
 	optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
@@ -113,6 +116,7 @@ def main():
 		os.putenv('SDL_VIDEODRIVER', 'fbcon')
 		os.environ["SDL_VIDEODRIVER"] = "dummy"
 	# Colors
+	global BLACK, WHITE, RED, GREEN, BLUE
 	BLACK = (  0,   0,   0)
 	WHITE = (255, 255, 255)
 	RED = (255,   0,   0)
@@ -131,12 +135,13 @@ def main():
 	replay = []
 	h = 0
 
-	for i in range(epochs):
+	for i in range(args.epochs):
 		print('epoch %s'%i)
 
 		#initialize state
+		active_shape = 0
 		phase, shapes = update_parameters(args,screen)
-		draw_screen(shapes,active_shape)
+		draw_screen(shapes,active_shape,screen)
 		pygame.display.update()
 
 		#Generate Target image
@@ -147,20 +152,17 @@ def main():
 		good_transform = False
 		while not good_transform:  
 			random_transformation(shapes,args.zoom_ratio,args.win_dim)            # randomly transform state 
-			draw_screen(shapes,active_shape)   
+			draw_screen(shapes,active_shape,screen)   
 			pygame.display.update()
 			targetscreen = get_screen(screen, grey_scale=True)   #store target as grey scale
-			#print(currentscreen.shape)
-			#print(currentscreen3d.shape)
-			#print(currentscreen3d)
-			#print(targetscreen.shape)
 			state = np.concatenate((currentscreen3d,np.array([targetscreen])))
 			shapes = deepcopy(stored_shapes)
 			active_shape = deepcopy(stored_active_shape)
-			draw_screen(shapes,active_shape)
+			draw_screen(shapes,active_shape,screen)
 			pygame.display.update()
-			if get_pix_ratio:      # check to make sure our target is not all white or all black
+			if get_pix_ratio(targetscreen):      # check to make sure our target is not all white or all black
 				good_transformation = True  
+
 
 
 		#get_state_image(state)
@@ -172,7 +174,7 @@ def main():
 			print('move %s'%iters)
 			#We are in state S
 			#Let's run our Q function on S to get Q values for all possible actions
-			qval = predict(state)
+			qval = predict(state, model, device, args)
 
 			if (random.random() < epsilon):
 				action = np.random.randint(0,15)
@@ -203,8 +205,8 @@ def main():
 				for memory in minibatch:
 					#Get max_Q(S',a)
 					old_state_memory, action_memory, reward_memory, new_state_memory = memory
-					old_qval = predict(old_state_memory)
-					newQ = model.predict(new_state_memory)
+					old_qval = predict(old_state_memory, model, device, args)
+					newQ = predict(new_state_memory, model, device, args)
 					maxQ = np.max(newQ)
 					y = np.zeros((1,n_actions))
 					y[:] = old_qval[:]
@@ -219,7 +221,7 @@ def main():
 				X_train = np.array(X_train)
 				y_train = np.array(y_train)
 				print("Game #: %s" % (i,))
-				model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=1, verbose=1)
+				train(data, target, model, optimizer, loss_func, device, args)
 			#pdb.set_trace()
 			state = new_state
 			#debugging
@@ -246,7 +248,7 @@ def main():
 
 #######   FUNCTIONS    ########
 
-def update_parameters(args, screen=screen):
+def update_parameters(args, screen):
 	spaces = int(args.win_dim/args.trans_step)
 	phase = int(np.random.choice(list(range(args.trans_step))))
 	shapes = {}
@@ -255,13 +257,13 @@ def update_parameters(args, screen=screen):
 	for s in range(args.num_shapes):
 		shape = Polygon(screen,args.trans_step,args.num_rotations,args.win_dim,args.zoom_ratio)
 		while shape.area < (args.win_dim/10)**2:
-			shape = Polygon(screen,args.trans_step,num_rotations,args.win_dim,args.zoom_ratio)
+			shape = Polygon(screen,args.trans_step,args.num_rotations,args.win_dim,args.zoom_ratio)
 		shape_pos = (np.random.choice(shape_positions),np.random.choice(shape_positions))
 		shape.translate((shape_pos[0]-shape.centroid[0],shape_pos[1]-shape.centroid[1]))
 		shapes.append(deepcopy(shape))
 	return phase, shapes
 
-def get_screen(screen = screen,flatten = False, grey_scale = True):
+def get_screen(screen,flatten = False, grey_scale = True):
 	npscreen = pygame.surfarray.array3d(screen).transpose((2, 0, 1))  # transpose into torch order (CHW)
 	npscreen = np.ascontiguousarray(npscreen, dtype=np.float32) / 255
 	if grey_scale:
@@ -338,7 +340,7 @@ class Polygon(object):
 		self.num_rotations = num_rotations
 		self.stride = stride
 		self.win_dim = win_dim
-		self.zoom = zoom
+		self.zoom = zoom_ratio
 		if points_list != 'random':
 			self.points_list = points_list
 			self.num_points = len(points_list)
@@ -434,7 +436,7 @@ class Polygon(object):
 		pygame.draw.polygon(surface, color, draw_points_list, width)
 
 
-def draw_screen(shapes,active_shape,screen=screen):
+def draw_screen(shapes,active_shape,screen):
 	screen.fill((0, 0, 0))
 	#Draw Shapes
 	for s in range(len(shapes)):
@@ -469,10 +471,6 @@ def translate_screen(direction, shapes, win_dim):
 			shape.translate((0, shape.stride))
 
 def random_transformation(shapes,zoom_ratio,win_dim):
-	if target_screen:
-		old_shapes = []
-		for shape in shapes:
-			old_shapes.append([shape.rotations,shape.rotation])   #store original rotations and rotation index
 	active_shape = 0
 	action_list = []
 	for i in range(len(shapes)):
@@ -519,12 +517,12 @@ def random_transformation(shapes,zoom_ratio,win_dim):
 		elif i == 11:
 			translate_screen(2, shapes,win_dim)
 		elif i == 12:
-			translate_screen(3, shapeswin_dim)
+			translate_screen(3, shapes,win_dim)
 		#zoom
 		elif i == 13:
-			zoom_screen(-1, shapes, zoom_ratio)
+			zoom_screen(-1, shapes, zoom_ratio, win_dim)
 		elif i == 14:
-			zoom_screen(1, shapes, zoom_ratio)
+			zoom_screen(1, shapes, zoom_ratio, win_dim)
 
 
 def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_dim):
@@ -550,7 +548,7 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_
 	elif action == 14:
 		zoom_screen(1, shapes, zoom_ratio)
 
-	draw_screen(shapes,active_shape)
+	draw_screen(shapes,active_shape,screen)
 	pygame.display.update()
 
 	currentscreen3d = get_screen(screen,grey_scale=False)
@@ -569,21 +567,20 @@ def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
 	return reward*scale
 
 
-def train(data, target, model = model, optimizer = optimizer, loss = loss, device=device, args=args):
+def train(data, target, model, optimizer, loss_func, device, args):
 	
 	model.train()
 	net_input = to_torch_net_input(data)
 	net_input, target = net_input.to(device), target.to(device)
 	optimizer.zero_grad()
 	output = model(net_input)
-		loss = F.nll_loss(output, target)
-
-		loss.backward()
-		optimizer.step()
+	loss = loss_func(output, target)
+	loss.backward()
+	optimizer.step()
 		
-		print('net updated. Loss: %s'%loss.item())                
+	print('net updated. Loss: %s'%loss.item())                
 
-def predict(data, model = model, device = device, args = args, numpy_out = True):
+def predict(data, model, device, args, numpy_out = True):
 	model.eval()
 	net_input = to_torch_net_input(data)
 	with torch.no_grad():
@@ -593,64 +590,6 @@ def predict(data, model = model, device = device, args = args, numpy_out = True)
 			return output.numpy()
 		else:
 			return output
-
-
-
-
-
-
-###MODEL###
-
-in_dim = (args.win_dim,args.win_dim,4)
-rms = RMSprop()
-adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-
-if model_kind == 'atari':
-	model = Sequential()
-	model.add(Conv2D(32, kernel_size=(8, 8),
-				 activation='relu',
-				 strides = 4,
-				 input_shape=in_dim))
-	model.add(Conv2D(64, (4, 4), activation='relu',strides = 2))
-	model.add(Conv2D(64, (3, 3), activation='relu',strides = 1))
-	model.add(Flatten())
-	model.add(Dense(512, activation='relu'))
-	model.add(Dense(n_actions, init='lecun_uniform'))
-	model.add(Activation('linear')) #linear output so we can have range of real-valued outputs
-
-	model.compile(loss='mse', optimizer=adam)  
-else:
-	model = Sequential()
-	model.add(Conv2D(16, kernel_size=(3, 3),
-				 activation='relu',
-				 input_shape=(in_dim)))
-	model.add(Conv2D(32, (3, 3), activation='relu'))
-	model.add(MaxPooling2D(pool_size=(2, 2)))
-	model.add(Dropout(0.25))
-	model.add(Flatten())
-	model.add(Dense(32, activation='relu'))
-	model.add(Dropout(0.5))
-	model.add(Dense(n_actions, init='lecun_uniform'))
-	model.add(Activation('linear')) #linear output so we can have range of real-valued outputs
-
-	model.compile(loss='mse', optimizer=adam)
-
-
-
-
-	
-	for epoch in range(1, args.epochs + 1):
-		#adjust learning rate
-		#if epoch > 600:
-		#    for param_group in optimizer.param_groups:
-		#        param_group['lr'] = args.lr/5
-		#if epoch > 700:
-		#    for param_group in optimizer.param_groups:
-		#        param_group['lr'] = args.lr/10
-		train(args, model, device, train_loader, optimizer, epoch)
-		test(args, model, device, test_loader, epoch)
-		if args.save_model and epoch in model_epochs:
-			torch.save(model,os.path.join('outputs',args.outputdir,'model_%s.pt'%str(epoch)))
 
 
 if __name__ == '__main__':
