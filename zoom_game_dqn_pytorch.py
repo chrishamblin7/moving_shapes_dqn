@@ -7,7 +7,6 @@ import math
 import sys
 import numpy as np
 import time
-np.set_printoptions(threshold=np.inf)
 import pdb
 import scipy.misc
 import random_polygon
@@ -21,12 +20,17 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 
-from tensorboardX import SummaryWriter
+#from tensorboardX import SummaryWriter
+
+sys.path.insert(0,'utility/')
+from pytorch_utils import to_torch_net_input
 
 sys.path.insert(0,'models/scipts/')
 import dqn_basic
 import dist_dqn
 import rainbow_dqn
+
+np.set_printoptions(threshold=np.inf)
 
 def main():
 	start = time.time()    #Get Start time for logging timings
@@ -46,23 +50,23 @@ def main():
                         help='discount factor for future reward (default: 0.975)')
     parser.add_argument('--buffer', type=int, default=20000, metavar='B',
                         help='Number of states to store in exp_replay (default: 20000)')
-    parser.add_argument('--max_moves', type=int, default=40, metavar='MM',
+    parser.add_argument('--max-moves', type=int, default=40, metavar='MM',
                         help='Max moves before reinitializing (default: 20000)')    
-    parser.add_argument('--win_dim', type=int, default=84, metavar='WD',
+    parser.add_argument('--win-dim', type=int, default=84, metavar='WD',
                         help='window dimension, input int, win = int x int (default: 84)')
-    parser.add_argument('--shape_size', type=int, default=8, metavar='SS',
+    parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
                         help='Average size of intial game shapes (default: 8)')
-    parser.add_argument('--num_shapes', type=int, default=4, metavar='NS',
+    parser.add_argument('--num-shapes', type=int, default=4, metavar='NS',
                         help='Number of shapes in game (default: 4)')
-    parser.add_argument('--trans_step', type=int, default=4, metavar='TS',
+    parser.add_argument('--trans-step', type=int, default=4, metavar='TS',
                         help='Number of pixels jumped when translating shape (default: 4)')
-    parser.add_argument('--zoom_ratio', type=float, default=1.2, metavar='ZR',
+    parser.add_argument('--zoom-ratio', type=float, default=1.2, metavar='ZR',
                         help='Scaling ratio when zooming (default: 1.2)')
-    parser.add_argument('--num_rotations', type=int, default=32, metavar='NR',
+    parser.add_argument('--num-rotations', type=int, default=32, metavar='NR',
                         help='Number of discrete rotation positions (default: 32)')    
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--show_window', action='store_true', default=False,
+    parser.add_argument('--show-window', action='store_true', default=False,
                         help='show game window while running')
     parser.add_argument('--seed', type=int, default=2, metavar='S',
                         help='random seed (default: 2)')
@@ -70,6 +74,13 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--model', type=str, default='dqn_basic', metavar='M',
                         help='neural net model to use (default: dqn_basic, other options: dist_dqn, rainbow_dqn)')
+    parser.add_argument('--loss', type=str, default='mse', metavar='L',
+                        help='loss function to use (default: mse, other options: cross_entropy)')
+    parser.add_argument('--save-interval', type=int, default=500, metavar='SI',
+                        help='Save model every (save-interal) epochs (default: 500)')
+    #non command-line arguments
+    n_actions = 15
+    net_input_dim = (4,args.win_dim,args.win_dim)
 
     #Hardware setting (GPU vs CPU)
     args = parser.parse_args()
@@ -88,7 +99,11 @@ def main():
                   'dist_dqn':dist_dqn.DistributionalDQN,
                   'rainbow_dqn':rainbow_dqn.RainbowDQN
 				 }
-    model = model_dict[args.model](num_classes=args.cutoff).to(device)
+    model = model_dict[args.model](net_input_dim,n_actions).to(device)
+
+    loss_dict = {'mse':nn.MSELoss(),
+    			 'cross_entropy':nn.CrossEntropyLoss()}
+
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     #Window Settings
@@ -111,11 +126,6 @@ def main():
 	clock = pygame.time.Clock()
 
 	#######    RUN GAME     #######
-
-	#model.compile(loss='mse', optimizer=rms)#reset weights of neural network
-
-	inputl_shape = (1,args.win_dim,args.win_dim,4)
-	data_shape = (args.win_dim,args.win_dim,4)
 
 	#stores tuples of (S, A, R, S')
 	replay = []
@@ -162,9 +172,8 @@ def main():
 	        print('move %s'%iters)
 	        #We are in state S
 	        #Let's run our Q function on S to get Q values for all possible actions
-	        qval = model.predict(state, batch_size=1)
-	        #optimal_options = optimal_action(player,target)
-	        #suboptimal_options = suboptimal_action(optimal_options)
+	        qval = predict(state)
+
 	        if (random.random() < epsilon):
 	            action = np.random.randint(0,15)
 	            print('action %s'%action)
@@ -194,18 +203,18 @@ def main():
 	            for memory in minibatch:
 	                #Get max_Q(S',a)
 	                old_state_memory, action_memory, reward_memory, new_state_memory = memory
-	                old_qval = model.predict(old_state_memory.reshape(inputl_shape), batch_size=1)
-	                newQ = model.predict(new_state_memory.reshape(inputl_shape), batch_size=1)
+	                old_qval = predict(old_state_memory)
+	                newQ = model.predict(new_state_memory)
 	                maxQ = np.max(newQ)
-	                y = np.zeros((1,num_actions))
+	                y = np.zeros((1,n_actions))
 	                y[:] = old_qval[:]
 	                #if reward_memory != 10: #non-terminal state
 	                update = (reward_memory + (gamma * maxQ))
 	                #else: #terminal state
 	                #	update = reward_memory
 	                y[0][action_memory] = update
-	                X_train.append(old_state_memory.reshape(data_shape))
-	                y_train.append(y.reshape(num_actions,))
+	                X_train.append(old_state_memory.reshape(net_input_dim))
+	                y_train.append(y.reshape(n_actions,))
 
 	            X_train = np.array(X_train)
 	            y_train = np.array(y_train)
@@ -221,21 +230,15 @@ def main():
 	        #clear_output(wait=True)
 	    if epsilon > 0.1: #decrement epsilon over time
 	        epsilon -= (1/epochs)
-	        #epsilon -= (1/100)
-	    if i in checkpoints:
+	    #save model
+	    if i%args.save_interval == 0:
 	        end = time.time()
 	        elapse_time = end -start
 	        print('TIME to epoch %s: %s'%(i,elapse_time))
-	        save_model(model,'%sepoch_%s'%(i,model_kind))
-	#pygame.quit()
+	        print('saving model')
+	        torch.save(model,os.path.join('models','model_%s.pt'%str(i)))
 
-	# serialize model to JSON
-	model_json = model.to_json()
-	with open("models/model.json", "w") as json_file:
-	    json_file.write(model_json)
-	# serialize weights to HDF5
-	model.save_weights("models/model.h5")
-	print("Saved model to disk")
+	torch.save(model,os.path.join('models','model_%s.pt'%str(i)))
 
 
 
@@ -565,18 +568,31 @@ def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
 		reward = score/currentscreen.size
     return reward*scale
 
-def save_model(model,name):
-    # serialize model to JSON
-    model_json = model.to_json()
-    with open("models/%s.json"%name, "w") as json_file:
-        json_file.write(model_json)
-    # serialize weights to HDF5
-    model.save_weights("models/%s.h5"%name)
-    print("Saved model to disk")
 
+def train(data, target, model = model, optimizer = optimizer, loss = loss, device=device, args=args):
+    
+    model.train()
+    net_input = to_torch_net_input(data)
+    net_input, target = net_input.to(device), target.to(device)
+    optimizer.zero_grad()
+    output = model(net_input)
+        loss = F.nll_loss(output, target)
 
+        loss.backward()
+        optimizer.step()
+        
+		print('net updated. Loss: %s'%loss.item())                
 
-
+def predict(data, model = model, device = device, args = args, numpy_out = True):
+    model.eval()
+	net_input = to_torch_net_input(data)
+    with torch.no_grad():
+        net_input = net_input.to(device)
+        output = model(net_input)
+        if numpy_out:
+        	return output.numpy()
+        else:
+        	return output
 
 
 
@@ -599,7 +615,7 @@ if model_kind == 'atari':
     model.add(Conv2D(64, (3, 3), activation='relu',strides = 1))
     model.add(Flatten())
     model.add(Dense(512, activation='relu'))
-    model.add(Dense(num_actions, init='lecun_uniform'))
+    model.add(Dense(n_actions, init='lecun_uniform'))
     model.add(Activation('linear')) #linear output so we can have range of real-valued outputs
 
     model.compile(loss='mse', optimizer=adam)  
@@ -614,7 +630,7 @@ else:
     model.add(Flatten())
     model.add(Dense(32, activation='relu'))
     model.add(Dropout(0.5))
-    model.add(Dense(num_actions, init='lecun_uniform'))
+    model.add(Dense(n_actions, init='lecun_uniform'))
     model.add(Activation('linear')) #linear output so we can have range of real-valued outputs
 
     model.compile(loss='mse', optimizer=adam)

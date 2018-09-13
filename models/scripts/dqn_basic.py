@@ -87,4 +87,4 @@ class DQN(nn.Module):
     def forward(self, x):
         fx = x.float() / 256
         conv_out = self.conv(fx).view(fx.size()[0], -1)
-return self.fc(conv_out)
+        return self.fc(conv_out)
