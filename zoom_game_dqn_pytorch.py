@@ -43,7 +43,7 @@ def main():
 	parser = argparse.ArgumentParser(description='PyTorch dqn shape moving game')
 	parser.add_argument('--batch-size', type=int, default=100, metavar='N',
 						help='input batch size for training (default: 100)')
-	parser.add_argument('--epochs', type=int, default=4001, metavar='N',
+	parser.add_argument('--epochs', type=int, default=4501, metavar='N',
 						help='number of epochs to train (default: 4000)')
 	parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
 						help='learning rate (default: 0.0001)')
@@ -52,7 +52,7 @@ def main():
 	parser.add_argument('--buffer', type=int, default=20000, metavar='B',
 						help='Number of states to store in exp_replay (default: 20000)')
 	parser.add_argument('--max-moves', type=int, default=40, metavar='MM',
-						help='Max moves before reinitializing (default: 20000)')    
+						help='Max moves before reinitializing (default: 40)')    
 	parser.add_argument('--win-dim', type=int, default=84, metavar='WD',
 						help='window dimension, input int, win = int x int (default: 84)')
 	parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
@@ -71,14 +71,14 @@ def main():
 						help='show game window while running')
 	parser.add_argument('--seed', type=int, default=2, metavar='S',
 						help='random seed (default: 2)')
-	parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-						help='how many batches to wait before logging training status')
 	parser.add_argument('--model', type=str, default='dqn_basic', metavar='M',
 						help='neural net model to use (default: dqn_basic, other options: dist_dqn, rainbow_dqn)')
 	parser.add_argument('--loss', type=str, default='mse', metavar='L',
 						help='loss function to use (default: mse, other options: cross_entropy)')
 	parser.add_argument('--save-interval', type=int, default=500, metavar='SI',
 						help='Save model every (save-interal) epochs (default: 500)')
+	parser.add_argument('--log-interval', type=int, default=20, metavar='LI',
+						help='log results every (log-interal) moves (default: 20)')
 
 	args = parser.parse_args()
 	print('running with args:')
@@ -137,10 +137,11 @@ def main():
 	h = 0
 
 	for i in range(args.epochs):
-		print('epoch %s'%i)
+		print('\n\nGame # %s'%i)
 
 		#initialize state
 		#pdb.set_trace()
+		#print('reinitializing game . . .')
 		active_shape = 0
 		phase, shapes = update_parameters(args,screen)
 		draw_screen(shapes,active_shape,screen)
@@ -172,26 +173,27 @@ def main():
 		#get_state_image(state)
 		status = 1
 		#while game still in progress
-		iters = 0
+		iters = -1
 		while(status == 1):
 			iters += 1
-			print('move %s'%iters)
+
 			#We are in state S
 			#Let's run our Q function on S to get Q values for all possible actions
 			qval = predict(state, model, device, args)
 
 			if (random.random() < epsilon):
 				action = np.random.randint(0,15)
-				print('action %s'%action)
+				action_type = 'Random'
 			else: #choose best action from Q(s,a) values
 				action = (np.argmax(qval))
-				print('action %s: Q policy'%action)
+				action_type = 'Q Policy'
 			#Take action, observe new state S'
-			currentscreen3d, currentscreen, new_state = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
+			currentscreen3d, currentscreen, new_state, active_shape = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
 			#Observe reward
 			reward = getReward(currentscreen,targetscreen, reward_type = 'pointwise')
-			print('Reward: %s'%reward)
-			print('Qval from model: %s'%qval)
+			if iters%args.log_interval == 0:
+				print('\nmove: %s    action: %s   (%s)     Reward: %s\n'%(iters,action,action_type,reward))
+				print('Qval from model: %s'%qval)
 
 			#Experience replay storage
 			if (len(replay) < args.buffer): #if buffer not filled, add to it
@@ -203,7 +205,7 @@ def main():
 					h = 0
 				replay[h] = (state, action, reward, new_state)
 				#randomly sample our experience replay memory
-				minibatch = random.sample(replay, batch_size)
+				minibatch = random.sample(replay, args.batch_size)
 				X_train = []
 				y_train = []
 				for memory in minibatch:
@@ -224,8 +226,10 @@ def main():
 
 				X_train = np.array(X_train)
 				y_train = np.array(y_train)
-				print("Game #: %s" % (i,))
-				train(data, target, model, optimizer, loss_func, device, args)
+				update_text = train(X_train, y_train, model, optimizer, loss_func, device, args)
+				if iters%args.log_interval == 0:
+					print(update_text)
+
 			#pdb.set_trace()
 			state = new_state
 			#debugging
@@ -242,9 +246,9 @@ def main():
 			elapse_time = end -start
 			print('TIME to epoch %s: %s'%(i,elapse_time))
 			print('saving model')
-			torch.save(model,os.path.join('models','model_%s.pt'%str(i)))
+			torch.save(model,os.path.join('models','saved_models','model_%s.pt'%str(i)))
 
-	torch.save(model,os.path.join('models','model_%s.pt'%str(i)))
+	torch.save(model,os.path.join('models','saved_models','model_%s.pt'%str(i)))
 
 
 
@@ -558,7 +562,7 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_
 	currentscreen3d = get_screen(screen,grey_scale=False)
 	currentscreen = get_screen(screen)
 	state = np.concatenate((currentscreen3d,np.array([targetscreen])))
-	return currentscreen3d, currentscreen, state
+	return currentscreen3d, currentscreen, state, active_shape
 
 
 def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
@@ -575,6 +579,8 @@ def train(data, target, model, optimizer, loss_func, device, args):
 	
 	model.train()
 	net_input = to_torch_net_input(data)
+	target = torch.from_numpy(target)
+	target = target.type(torch.FloatTensor)
 	net_input, target = net_input.to(device), target.to(device)
 	optimizer.zero_grad()
 	output = model(net_input)
@@ -582,7 +588,7 @@ def train(data, target, model, optimizer, loss_func, device, args):
 	loss.backward()
 	optimizer.step()
 		
-	print('net updated. Loss: %s'%loss.item())                
+	return 'network Loss: %s'%loss.item()                
 
 def predict(data, model, device, args, numpy_out = True):
 	model.eval()
