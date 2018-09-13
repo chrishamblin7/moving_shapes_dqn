@@ -88,6 +88,7 @@ def main():
 	#non command-line arguments
 	n_actions = 15
 	net_input_dim = (4,args.win_dim,args.win_dim)
+	epsilon = 1
 
 	#Hardware setting (GPU vs CPU)
 
@@ -139,12 +140,14 @@ def main():
 		print('epoch %s'%i)
 
 		#initialize state
+		#pdb.set_trace()
 		active_shape = 0
 		phase, shapes = update_parameters(args,screen)
 		draw_screen(shapes,active_shape,screen)
 		pygame.display.update()
 
 		#Generate Target image
+		#print('Generating random transform . . .')
 		currentscreen3d = get_screen(screen, grey_scale=False)  #get state as 3 channel image
 		currentscreen = get_screen(screen)
 		stored_shapes = deepcopy(shapes)              #store state   of shape objects
@@ -161,7 +164,8 @@ def main():
 			draw_screen(shapes,active_shape,screen)
 			pygame.display.update()
 			if get_pix_ratio(targetscreen):      # check to make sure our target is not all white or all black
-				good_transformation = True  
+				good_transform = True  
+		#print('transform found')
 
 
 
@@ -185,15 +189,15 @@ def main():
 			#Take action, observe new state S'
 			currentscreen3d, currentscreen, new_state = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
 			#Observe reward
-			getReward(currentscreen,targetscreen, reward_type = 'pointwise')
+			reward = getReward(currentscreen,targetscreen, reward_type = 'pointwise')
 			print('Reward: %s'%reward)
 			print('Qval from model: %s'%qval)
 
 			#Experience replay storage
-			if (len(replay) < buffer): #if buffer not filled, add to it
+			if (len(replay) < args.buffer): #if buffer not filled, add to it
 				replay.append((state, action, reward, new_state))
 			else: #if buffer full, overwrite old values
-				if (h < (buffer-1)):
+				if (h < (args.buffer-1)):
 					h += 1
 				else:
 					h = 0
@@ -211,7 +215,7 @@ def main():
 					y = np.zeros((1,n_actions))
 					y[:] = old_qval[:]
 					#if reward_memory != 10: #non-terminal state
-					update = (reward_memory + (gamma * maxQ))
+					update = (reward_memory + (args.gamma * maxQ))
 					#else: #terminal state
 					#	update = reward_memory
 					y[0][action_memory] = update
@@ -227,11 +231,11 @@ def main():
 			#debugging
 			#if not (len(replay) < buffer):
 			#    pdb.set_trace()
-			if iters > max_moves: #if reached terminal state, or too many moves taken update game status
+			if iters > args.max_moves: #if reached terminal state, or too many moves taken update game status
 				status = 0
 			#clear_output(wait=True)
 		if epsilon > 0.1: #decrement epsilon over time
-			epsilon -= (1/epochs)
+			epsilon -= (1/args.epochs)
 		#save model
 		if i%args.save_interval == 0:
 			end = time.time()
@@ -544,9 +548,9 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_
 		translate_screen(3, shapes,win_dim)
 	#zoom
 	elif action == 13:
-		zoom_screen(-1, shapes, zoom_ratio)
+		zoom_screen(-1, shapes, zoom_ratio, win_dim)
 	elif action == 14:
-		zoom_screen(1, shapes, zoom_ratio)
+		zoom_screen(1, shapes, zoom_ratio, win_dim)
 
 	draw_screen(shapes,active_shape,screen)
 	pygame.display.update()
