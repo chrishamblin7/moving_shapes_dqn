@@ -18,7 +18,7 @@ os.environ["SDL_VIDEO_CENTERED"] = "1"
 
 pygame.init()
 
-automated = False
+keypad = False
 max_dim = int(500)
 num_shapes = 7
 shape_size = int(10)
@@ -343,8 +343,12 @@ while running:
 
 		key = pygame.key.get_pressed()
 		#switch Shapes
-		if key[pygame.K_KP5]:
-			active_shape = (active_shape+1)%len(shapes)
+		if keypad:
+			if key[pygame.K_KP5]:
+				active_shape = (active_shape+1)%len(shapes)
+		else:
+			if key[pygame.K_0]:
+				active_shape = (active_shape+1)%len(shapes)			
 
 		screen.fill((0, 0, 0))
 		#pygame.draw.circle(screen, BLUE, (int(max_dim/2), int(max_dim/2)), 20, 0)
@@ -361,19 +365,34 @@ while running:
 
 		#camera_keys
 		#Translate
-		if key[pygame.K_KP6]:
-			translate_screen(0, shapes)
-		if key[pygame.K_KP4]:
-			translate_screen(1, shapes)
-		if key[pygame.K_KP2]:
-			translate_screen(2, shapes)
-		if key[pygame.K_KP8]:
-			translate_screen(3, shapes)
-		#zoom
-		if key[pygame.K_KP7]:
-			zoom_screen(-1, shapes, zoom)
-		if key[pygame.K_KP9]:
-			zoom_screen(1, shapes, zoom)
+		if keypad:
+			if key[pygame.K_KP6]:
+				translate_screen(0, shapes)
+			if key[pygame.K_KP4]:
+				translate_screen(1, shapes)
+			if key[pygame.K_KP2]:
+				translate_screen(2, shapes)
+			if key[pygame.K_KP8]:
+				translate_screen(3, shapes)
+			#zoom
+			if key[pygame.K_KP7]:
+				zoom_screen(-1, shapes, zoom)
+			if key[pygame.K_KP9]:
+				zoom_screen(1, shapes, zoom)
+		else:
+			if key[pygame.K_l]:
+				translate_screen(0, shapes)
+			if key[pygame.K_i]:
+				translate_screen(1, shapes)
+			if key[pygame.K_k]:
+				translate_screen(2, shapes)
+			if key[pygame.K_o]:
+				translate_screen(3, shapes)
+			#zoom
+			if key[pygame.K_n]:
+				zoom_screen(-1, shapes, zoom)
+			if key[pygame.K_m]:
+				zoom_screen(1, shapes, zoom)			
 
 
 		#utility keys

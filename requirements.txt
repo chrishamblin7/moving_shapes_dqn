@@ -1,0 +1,12 @@
+requirements:
+
+Heres how to create a conda environment that that run the moving blocks game:
+
+
+conda create --name blocks_game python=3.6
+source activate blocks_game
+conda install numpy
+conda install pillow
+conda install scipy
+pip install pygame
+conda install pytorch torchvision -c pytorch

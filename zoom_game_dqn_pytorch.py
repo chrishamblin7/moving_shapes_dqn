@@ -564,6 +564,27 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, zoom_ratio,win_
 	state = np.concatenate((currentscreen3d,np.array([targetscreen])))
 	return currentscreen3d, currentscreen, state, active_shape
 
+'''
+class Reward(object):
+	def pointwise(self):
+		contrast = self.currentscreen - self.targetscreen
+		unique, counts = np.unique(contrast, return_counts=True)
+		score = dict(zip(unique,counts))[0]
+		return score/self.currentscreen.size		
+
+	def shapewise(self):
+		num_shapes = len(shapes)
+
+	def __init__(self, currentscreen,targetscreen, shapes, target_shapes, reward_type, scale = 1):
+		self.currentscreen = currentscreen
+		self.targetscreen = targetscreen
+		self.shapes = shapes
+		self.target_shapes = target_shapes
+		self.reward_type = reward_type
+		self.scale = scale
+		self.reward = self.get_reward()
+'''
+
 
 def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
 
@@ -572,6 +593,8 @@ def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
 		unique, counts = np.unique(contrast, return_counts=True)
 		score = dict(zip(unique,counts))[0]
 		reward = score/currentscreen.size
+	else:
+
 	return reward*scale
 
 
