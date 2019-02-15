@@ -11,24 +11,43 @@ source activate shapes_game
 
 ## Human Controls
 left:          move shape left
+
 right:         move shape right
+
 up:            move shape up
+
 down:          move shape down
+
 q:             rotate shape left
+
 w:             rotate shape right
+
 a:             scale shape down
+
 s:             scale shape up
+
 0:             switch shape
+
 t:             put shapes through series of random transformation
+
 u:             initialize new shapes
+
 i:             move camera left
+
 l:             move camera right
+
 o:             move camera up
+
 k:             move camera down
+
 m:             zoom camera in
+
 n:             zoom camera out
+
 r:             save current state
+
 y:             return to saved state
+
 g:             save image of screen to images
 
 
