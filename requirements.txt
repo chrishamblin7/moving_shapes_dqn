@@ -7,6 +7,6 @@ conda create --name blocks_game python=3.6
 source activate blocks_game
 conda install numpy
 conda install pillow
-conda install scipy
 pip install pygame
 conda install pytorch torchvision -c pytorch
+pip install scipy==1.0.1
