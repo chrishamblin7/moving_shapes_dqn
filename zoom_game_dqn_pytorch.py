@@ -23,6 +23,21 @@ from torch.autograd import Variable
 
 #from tensorboardX import SummaryWriter
 
+
+
+# Colors
+global BLACK, WHITE, RED, RED_ACTIVE, GREEN, BLUE
+BLACK = (  0,   0,   0)	
+WHITE = (255, 255, 255)
+RED = (255,   100,   100)
+RED_ACTIVE = (255, 0, 0)
+GREEN = (  0, 255,   0)
+BLUE = (  0,   0, 255)
+BLUE_ACTIVE = (  0,   0, 255)
+
+
+
+
 sys.path.insert(0,'utility/')
 from pytorch_utils import to_torch_net_input
 
@@ -43,8 +58,14 @@ def main():
 	parser = argparse.ArgumentParser(description='PyTorch dqn shape moving game')
 	parser.add_argument('--batch-size', type=int, default=100, metavar='N',
 						help='input batch size for training (default: 100)')
-	parser.add_argument('--epochs', type=int, default=4501, metavar='N',
+	parser.add_argument('--world-transforms', type=bool, default=False, metavar='WT',
+						help='include world transforms (camera zoom and rotation) in \
+						available actions (default: False)')
+	parser.add_argument('--epochs', type=int, default=4501, metavar='E',
 						help='number of epochs to train (default: 4000)')
+	parser.add_argument('--reward-function', type=str, default='object_param', metavar='R',
+						help='reward function to use. choices: pix_dif (pixel difference) \
+						object_param (closeness to actual parameters of shapes, rot, trans, scale \                         (default:object_param)')
 	parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
 						help='learning rate (default: 0.0001)')
 	parser.add_argument('--gamma', type=float, default=0.975, metavar='G',
@@ -86,8 +107,11 @@ def main():
 
 
 	#non command-line arguments
-	n_actions = 15
-	net_input_dim = (4,args.win_dim,args.win_dim)
+	if not args.world_transforms:      #set output dimensions of network
+		n_actions = 9
+	else:
+		n_actions = 15
+	net_input_dim = (4,args.win_dim,args.win_dim)    #set input dimensions
 	epsilon = 1
 
 	#Hardware setting (GPU vs CPU)
@@ -97,6 +121,7 @@ def main():
 		print('using cuda')
 	#seed
 	torch.manual_seed(args.seed)
+	
 	device = torch.device("cuda" if use_cuda else "cpu")
 	kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
@@ -117,12 +142,15 @@ def main():
 		os.putenv('SDL_VIDEODRIVER', 'fbcon')
 		os.environ["SDL_VIDEODRIVER"] = "dummy"
 	# Colors
-	global BLACK, WHITE, RED, GREEN, BLUE
+	global BLACK, WHITE, RED, RED_ACTIVE, GREEN, BLUE
+
 	BLACK = (  0,   0,   0)
 	WHITE = (255, 255, 255)
-	RED = (255,   0,   0)
+	RED = (255,   100,   100)
+	RED_ACTIVE = (255, 0, 0)
 	GREEN = (  0, 255,   0)
 	BLUE = (  0,   0, 255)
+	BLUE_ACTIVE = (  0,   0, 255)
 
 	#initialize game
 	pygame.init()
@@ -159,13 +187,15 @@ def main():
 			draw_screen(shapes,active_shape,screen)   
 			pygame.display.update()
 			targetscreen = get_screen(screen, grey_scale=True)   #store target as grey scale
-			state = np.concatenate((currentscreen3d,np.array([targetscreen])))
-			shapes = deepcopy(stored_shapes)
-			active_shape = deepcopy(stored_active_shape)
-			draw_screen(shapes,active_shape,screen)
-			pygame.display.update()
 			if get_pix_ratio(targetscreen):      # check to make sure our target is not all white or all black
 				good_transform = True  
+		state = np.concatenate((currentscreen3d,np.array([targetscreen])))
+		target_shapes = deepcopy(shapes)
+		shapes = deepcopy(stored_shapes)
+		active_shape = deepcopy(stored_active_shape)
+		draw_screen(shapes,active_shape,screen)
+		pygame.display.update()
+
 		#print('transform found')
 
 
@@ -182,7 +212,7 @@ def main():
 			qval = predict(state, model, device, args)
 
 			if (random.random() < epsilon):
-				action = np.random.randint(0,15)
+				action = np.random.randint(0,n_actions)
 				action_type = 'Random'
 			else: #choose best action from Q(s,a) values
 				action = (np.argmax(qval))
@@ -190,7 +220,7 @@ def main():
 			#Take action, observe new state S'
 			currentscreen3d, currentscreen, new_state, active_shape = makeMove(action, shapes, active_shape, screen, targetscreen,args.zoom_ratio,args.win_dim)
 			#Observe reward
-			reward = getReward(currentscreen,targetscreen, reward_type = 'pointwise')
+			reward = getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_type = args.reward_function)
 			if iters%args.log_interval == 0:
 				print('\nmove: %s    action: %s   (%s)     Reward: %s\n'%(iters,action,action_type,reward))
 				print('Qval from model: %s'%qval)
@@ -305,7 +335,7 @@ def get_state_image(state,win_dim,name='none'):
 		imarray = imarray.transpose(2,1,0)
 	else:
 		imarray = state.transpose(2,1,0)
-		imarray = imarray.reshape(max_dim,max_dim)
+		imarray = imarray.reshape(win_dim,win_dim)
 	imarray[imarray > 0] = 255
 	imarray[imarray != 255] = 0
 	if name == 'none':
@@ -437,7 +467,7 @@ class Polygon(object):
 		if input == 7:
 			self.scale(1)			
 
-	def draw(self, surface, color = (255,255,255), width = 0):
+	def draw(self, surface, color = WHITE, width = 0):
 		draw_points_list = []    #points are not the same as draw points must be shift by max_dim/10 in each dimension as screen has boundary area
 		for point in self.points_list:
 			draw_points_list.append((point[0],point[1]))
@@ -450,10 +480,10 @@ def draw_screen(shapes,active_shape,screen):
 	for s in range(len(shapes)):
 		if s == active_shape:
 			continue 
-		shapes[s].draw(screen,color=BLUE)
+		shapes[s].draw(screen,color=RED)
 		#if automated:
 		#	player.robo_action(optimal_action(player,target))
-	shapes[active_shape].draw(screen,color=RED)
+	shapes[active_shape].draw(screen,color=RED_ACTIVE)
 
 #global transformations
 def zoom_screen(direction, shapes, zoom_ratio, win_dim):
@@ -586,17 +616,35 @@ class Reward(object):
 '''
 
 
-def getReward(currentscreen,targetscreen, reward_type = 'pointwise', scale = 1):
-
-	if reward_type == 'pointwise':
+def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_type = 'object_param', reward_scale = 1):
+	
+	win_dim = args.win_dim
+	if reward_type == 'pix_dif':
 		contrast = currentscreen - targetscreen
 		unique, counts = np.unique(contrast, return_counts=True)
 		score = dict(zip(unique,counts))[0]
 		reward = score/currentscreen.size
 	else:
-
-	return reward*scale
-
+		object_scaling = {'x':.3,'y':.3,'r':.25,'s':.15}    # relative weight for translation, rotation, and scaling importance
+		shape_scores = []
+		for i in range(len(shapes)):
+			shape = shapes[i]
+			target_shape = target_shapes[i]
+			x_dif = (args.win_dim - abs(shape.centroid[0]-target_shape.centroid[0]))/args.win_dim
+			y_dif = (args.win_dim - abs(shape.centroid[1]-target_shape.centroid[1]))/args.win_dim
+			rot_dif = (shape.num_rotations-abs(shape.rotation - target_shape.rotation))/shape.num_rotations
+			scale_dif = (win_dim**2 - abs(shape.area-target_shape.area))/win_dim**2
+			shape_score = x_dif*object_scaling['x']+y_dif*object_scaling['y']+rot_dif*object_scaling['r']+scale_dif*object_scaling['s']
+			shape_scores.append(shape_score)
+		reward = sum(shape_scores)/len(shape_scores)
+	if reward_type == 'combined':
+		contrast = currentscreen - targetscreen
+		unique, counts = np.unique(contrast, return_counts=True)
+		score = dict(zip(unique,counts))[0]
+		reward += score/currentscreen.size    #add both score types together
+		reward = reward/2
+		print('Reward: %s'%reward*reward_scale)
+	return reward*reward_scale
 
 def train(data, target, model, optimizer, loss_func, device, args):
 	
