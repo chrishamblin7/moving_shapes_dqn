@@ -6,6 +6,7 @@ import pygame
 import math
 import sys
 import numpy as np
+sys.path.insert(0,'../utility_scripts/')
 import random_polygon
 from math import pi, cos, sin
 from copy import deepcopy

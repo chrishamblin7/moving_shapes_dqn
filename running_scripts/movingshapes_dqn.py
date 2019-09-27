@@ -10,6 +10,7 @@ import numpy as np
 import time
 import pdb
 import scipy.misc
+sys.path.insert(0,'../utility_scripts/')
 import random_polygon
 from math import pi, cos, sin
 from copy import deepcopy
