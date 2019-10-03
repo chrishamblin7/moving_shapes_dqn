@@ -38,11 +38,10 @@ BLUE_ACTIVE = (  0,   0, 255)
 
 
 
-
-sys.path.insert(0,'utility/')
+sys.path.insert(0,'../utility_scripts/')
 from pytorch_utils import to_torch_net_input
 
-sys.path.insert(0,'models/scripts/')
+sys.path.insert(0,'../models/scripts/')
 import dqn_basic
 #import dist_dqn
 #import rainbow_dqn
@@ -101,6 +100,8 @@ def main():
 						help='Save model every (save-interal) epochs (default: 500)')
 	parser.add_argument('--log-interval', type=int, default=20, metavar='LI',
 						help='log results every (log-interal) moves (default: 20)')
+	parser.add_argument('--num-gpus', type=int, default=2, metavar='NG',
+						help='Number of gpus to train in parallel (default: 2)')
 
 	args = parser.parse_args()
 	print('running with args:')
@@ -129,7 +130,12 @@ def main():
 	#initialize model
 	model_dict = {'dqn_basic':dqn_basic.DQN}
 	model = model_dict[args.model](net_input_dim,n_actions).to(device)
-
+	#handle multiple gpus
+	if args.num_gpus > 1:
+		print("Running on", torch.cuda.device_count(), "gpus")
+		args.batch_size = torch.cuda.device_count()*args.batch_size
+		model = nn.DataParallel(model)
+	
 	loss_dict = {'mse':nn.MSELoss(),
 				 'cross_entropy':nn.CrossEntropyLoss()}
 	loss_func = loss_dict[args.loss]
@@ -277,7 +283,7 @@ def main():
 			elapse_time = end -start
 			print('TIME to epoch %s: %s'%(i,elapse_time))
 			print('saving model')
-			torch.save(model,os.path.join('models','saved_models','model_%s.pt'%str(i)))
+			torch.save(model,os.path.join('../models','saved_models','model_%s.pt'%str(i)))
 
 	torch.save(model,os.path.join('models','saved_models','model_%s.pt'%str(i)))
 
