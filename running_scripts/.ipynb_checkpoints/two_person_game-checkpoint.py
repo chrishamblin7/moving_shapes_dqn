@@ -15,6 +15,8 @@ import time
 import scipy.misc
 np.set_printoptions(threshold=np.inf)
 
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+
 os.environ["SDL_VIDEO_CENTERED"] = "1"
 
 pygame.init()
