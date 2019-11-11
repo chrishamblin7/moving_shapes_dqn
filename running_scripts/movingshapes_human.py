@@ -13,6 +13,7 @@ from copy import deepcopy
 from subprocess import call
 import time
 import scipy.misc
+from pprint import pprint
 np.set_printoptions(threshold=np.inf)
 
 os.environ["SDL_VIDEO_CENTERED"] = "1"
@@ -20,12 +21,13 @@ os.environ["SDL_VIDEO_CENTERED"] = "1"
 pygame.init()
 
 keypad = False
-max_dim = int(500)
+max_dim = int(84)
 num_shapes = 3
 shape_size = int(10)
 #target_size = int(player_size+2)
 #spaces_list = [int(max_dim/10),int(max_dim/5),int(max_dim/2)]
-spaces_list = [int(max_dim/5)]
+trans_step = 2
+spaces_list = [int(max_dim/trans_step)] #spaces_list = [int(max_dim/5)]
 #rotations_list = [4,8,16]
 rotations_list = [64]
 zoom_list = [1.2]
@@ -39,12 +41,44 @@ GREEN = (  0, 255,   0)
 BLUE = (  0,   0, 255)
 
 
-screen = pygame.display.set_mode((max_dim,max_dim))
+########   SETTINGS   ###########
+
+# Command Line Arguments
+parser = argparse.ArgumentParser(description='Human playable block game')
+
+parser.add_argument('--world-transforms', type=bool, default=False, metavar='WT',
+					help='include world transforms (camera zoom and rotation) in \
+					available actions (default: False)')
+parser.add_argument('--win-dim', type=int, default=84, metavar='WD',
+					help='window dimension, input int, win = int x int (default: 84)')
+parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
+					help='Average size of intial game shapes (default: 8)')
+parser.add_argument('--num-shapes', type=int, default=3, metavar='NS',
+					help='Number of shapes in game (default: 4)')
+parser.add_argument('--trans-step', type=int, default=2, metavar='TS',
+					help='Number of pixels jumped when translating shape (default: 4)')
+parser.add_argument('--zoom-ratio', type=float, default=1.2, metavar='ZR',
+					help='Scaling ratio when zooming (default: 1.2)')
+parser.add_argument('--num-rotations', type=int, default=32, metavar='NR',
+					help='Number of discrete rotation positions (default: 32)')    
+parser.add_argument('--no-cuda', action='store_true', default=False,
+					help='disables CUDA training')
+parser.add_argument('--show-window', action='store_true', default=False,
+					help='show game window while running')
+parser.add_argument('--seed', type=int, default=2, metavar='S',
+					help='random seed (default: 2)')
+
+
+
+
+
+
+screen = pygame.display.set_mode((args.win_dim,args.win_dim))
 
 pygame.display.set_caption("Line Up Shapes")
 
 
-def update_parameters(spaces_list = spaces_list,rotations_list = rotations_list, zoom_list=zoom_list,max_dim = max_dim,shape_size = shape_size, screen=screen):
+def update_parameters(spaces_list = spaces_list,rotations_list = rotations_list, zoom_list=zoom_list,win_dim = max_dim,shape_size = shape_size, screen=screen):
 	spaces = int(random.choice(spaces_list))
 	stride = int(max_dim/spaces)
 	phase = int(np.random.choice(list(range(stride))))
@@ -169,17 +203,17 @@ class Polygon(object):
 		key = pygame.key.get_pressed()
 		dist = 1
 		if key[pygame.K_LEFT]:
-			#if not self.centroid[0] < self.stride:
-			self.translate((-1*self.stride, 0))
+			if not self.centroid[0] < self.stride:
+				self.translate((-1*self.stride, 0))
 		if key[pygame.K_RIGHT]:
-			#if not self.centroid[0] > max_dim-self.stride: 
-			self.translate((self.stride, 0))
+			if not self.centroid[0] > max_dim-self.stride: 
+				self.translate((self.stride, 0))
 		if key[pygame.K_UP]:
-			#if not self.centroid[1] < self.stride:
-			self.translate((0, -1*self.stride))
+			if not self.centroid[1] < self.stride:
+				self.translate((0, -1*self.stride))
 		if key[pygame.K_DOWN]:
-			#if not self.centroid[1] > max_dim-self.stride:
-			self.translate((0, self.stride))
+			if not self.centroid[1] > max_dim-self.stride:
+				self.translate((0, self.stride))
 		if key[pygame.K_q]:
 			self.rotate('left')
 		if key[pygame.K_w]:
@@ -192,17 +226,17 @@ class Polygon(object):
 
 	def robo_action(self,input):
 		if input == 0:
-			#if not self.centroid[0] < self.stride:
-			self.translate((-1*self.stride, 0))
+			if not self.centroid[0] < self.stride:
+				self.translate((-1*self.stride, 0))
 		if input == 1:
-			#if not self.centroid[0] > max_dim-self.stride: 
-			self.translate((self.stride, 0))
+			if not self.centroid[0] > max_dim-self.stride: 
+				self.translate((self.stride, 0))
 		if input == 2:
-			#if not self.centroid[1] < self.stride:
-			self.translate((0, -1*self.stride))
+			if not self.centroid[1] < self.stride:
+				self.translate((0, -1*self.stride))
 		if input == 3:
-			#if not self.centroid[1] > max_dim-self.stride:
-			self.translate((0, self.stride))
+			if not self.centroid[1] > max_dim-self.stride:
+				self.translate((0, self.stride))
 		if input == 4:
 			self.rotate('right')
 		if input == 5:
@@ -273,6 +307,10 @@ def get_state_image(state,name='none'):
     else:
         scipy.misc.imsave('images/%s'%name,imarray)
 
+def print_obj(obj):
+  for attr in dir(obj):
+    print("obj.%s = %r" % (attr, getattr(obj, attr)))
+
 def random_transformation(shapes,zoom):
 
 	active_shape = 0
@@ -295,18 +333,19 @@ def random_transformation(shapes,zoom):
 		for i in range(s_amount):
 			action_list.append(s_dir)
 		action_list.append(8)
-	cy_dir = random.choice([9,10])
-	cx_dir = random.choice([11,12])
-	cz_dir = random.choice([13,14])
-	cy_amount = random.randint(0,10)
-	cx_amount = random.randint(0,10)
-	cz_amount = random.randint(0,10)
-	for i in range(cy_amount):
-		action_list.append(cy_dir)
-	for i in range(cx_amount):
-		action_list.append(cx_dir)
-	for i in range(cz_amount):
-		action_list.append(cz_dir)
+	if args.world_transforms:
+		cy_dir = random.choice([9,10])
+		cx_dir = random.choice([11,12])
+		cz_dir = random.choice([13,14])
+		cy_amount = random.randint(0,10)
+		cx_amount = random.randint(0,10)
+		cz_amount = random.randint(0,10)
+		for i in range(cy_amount):
+			action_list.append(cy_dir)
+		for i in range(cx_amount):
+			action_list.append(cx_dir)
+		for i in range(cz_amount):
+			action_list.append(cz_dir)
 	#print(action_list)	
 	for i in action_list:
 		if i == 8:
@@ -426,9 +465,15 @@ while running:
 				print(i)
 				print(shapes[i].points_list)
 			print('stored_shapes')
-			for i in range(len(stored_shapes)):
-				print(i)
-				print(stored_shapes[i].points_list)
+			try:
+				for i in range(len(stored_shapes)):
+					print(i)
+					print(stored_shapes[i].points_list)
+			except:
+				print('no stored shapes')
+			print('active shape')
+			print('centroid: %s'%str(shapes[active_shape].centroid))
+
 
 		pygame.display.update()
 

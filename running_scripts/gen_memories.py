@@ -1,3 +1,4 @@
+#test
 import random
 from pygame.locals import *
 import os
@@ -8,23 +9,14 @@ import math
 import sys
 import numpy as np
 import time
-import pdb
+#import pdb
 import scipy.misc
 sys.path.insert(0,'../utility_scripts/')
 import random_polygon
 from math import pi, cos, sin
 from copy import deepcopy
-from importlib import reload
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.autograd import Variable
-
-#from tensorboardX import SummaryWriter
-
-
+#from importlib import reload
+import pickle
 
 # Colors
 global BLACK, WHITE, RED, RED_ACTIVE, GREEN, BLUE
@@ -39,12 +31,8 @@ BLUE_ACTIVE = (  0,   0, 255)
 
 
 sys.path.insert(0,'../utility_scripts/')
-from pytorch_utils import to_torch_net_input
 
-sys.path.insert(0,'../models/scripts/')
-import dqn_basic
-#import dist_dqn
-#import rainbow_dqn
+
 
 np.set_printoptions(threshold=np.inf)
 
@@ -56,24 +44,16 @@ def main():
 
 	# Command Line Arguments
 	parser = argparse.ArgumentParser(description='PyTorch dqn shape moving game')
-	parser.add_argument('--batch-size', type=int, default=100, metavar='N',
-						help='input batch size for training (default: 100)')
+	parser.add_argument('num_memories', type = int, default=10000,metavar='NM',
+						help= 'number of memories to generate (default=10000)')
+	parser.add_argument('load_path', type=str,default='NA',metavar='P',
+						help= 'path to append memories to, if "NA" generate new file')
 	parser.add_argument('--world-transforms', type=bool, default=False, metavar='WT',
 						help='include world transforms (camera zoom and rotation) in \
 						available actions (default: False)')
-	parser.add_argument('--epochs', type=int, default=4501, metavar='E',
-						help='number of epochs to train (default: 4000)')
 	parser.add_argument('--reward-function', type=str, default='object_param', metavar='R',
 						help='reward function to use. choices: pix_dif (pixel difference) \
-						object_param (closeness to actual parameters of shapes, rot, trans, scale \                         (default:object_param)')
-	parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
-						help='learning rate (default: 0.0001)')
-	parser.add_argument('--gamma', type=float, default=0.975, metavar='G',
-						help='discount factor for future reward (default: 0.975)')
-	parser.add_argument('--buffer', type=int, default=20000, metavar='B',
-						help='Number of states to store in exp_replay (default: 20000)')
-	parser.add_argument('--max-moves', type=int, default=40, metavar='MM',
-						help='Max moves before reinitializing (default: 40)')    
+						object_param (closeness to actual parameters of shapes, rot, trans, scale (default:object_param)')
 	parser.add_argument('--win-dim', type=int, default=84, metavar='WD',
 						help='window dimension, input int, win = int x int (default: 84)')
 	parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
@@ -92,20 +72,19 @@ def main():
 						help='show game window while running')
 	parser.add_argument('--seed', type=int, default=2, metavar='S',
 						help='random seed (default: 2)')
-	parser.add_argument('--model', type=str, default='dqn_basic', metavar='M',
-						help='neural net model to use (default: dqn_basic, other options: dist_dqn, rainbow_dqn)')
-	parser.add_argument('--loss', type=str, default='mse', metavar='L',
-						help='loss function to use (default: mse, other options: cross_entropy)')
-	parser.add_argument('--save-interval', type=int, default=500, metavar='SI',
-						help='Save model every (save-interal) epochs (default: 500)')
-	parser.add_argument('--log-interval', type=int, default=20, metavar='LI',
-						help='log results every (log-interal) moves (default: 20)')
-	parser.add_argument('--num-gpus', type=int, default=2, metavar='NG',
-						help='Number of gpus to train in parallel (default: 2)')
+
 
 	args = parser.parse_args()
 	print('running with args:')
 	print(args)
+
+	if args.load_path = "NA":
+		memories = {'metadata':{0:args},'memories':{}}
+		index = 0
+	else:
+		memories = pickle.load(args.load_path)
+		index = len(memories['memories'])
+		memories['metadata'][len(memories['metadata'])] = args
 
 
 	#non command-line arguments
@@ -114,33 +93,7 @@ def main():
 	else:
 		n_actions = 15
 	net_input_dim = (4,args.win_dim,args.win_dim)    #set input dimensions
-	epsilon = 1
-
-	#Hardware setting (GPU vs CPU)
-
-	use_cuda = not args.no_cuda and torch.cuda.is_available()
-	if use_cuda:
-		print('using cuda')
-	#seed
-	torch.manual_seed(args.seed)
 	
-	device = torch.device("cuda" if use_cuda else "cpu")
-	kwargs = {'num_workers': 3, 'pin_memory': True} if use_cuda else {}
-
-	#initialize model
-	model_dict = {'dqn_basic':dqn_basic.DQN}
-	model = model_dict[args.model](net_input_dim,n_actions).to(device)
-	#handle multiple gpus
-	if args.num_gpus > 1:
-		print("Running on", torch.cuda.device_count(), "gpus")
-		args.batch_size = torch.cuda.device_count()*args.batch_size
-		model = nn.DataParallel(model)
-	
-	loss_dict = {'mse':nn.MSELoss(),
-				 'cross_entropy':nn.CrossEntropyLoss()}
-	loss_func = loss_dict[args.loss]
-
-	optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 	#Window Settings
 	os.environ["SDL_VIDEO_CENTERED"] = "1"
@@ -148,6 +101,17 @@ def main():
 	if not args.show_window:
 		os.putenv('SDL_VIDEODRIVER', 'fbcon')
 		os.environ["SDL_VIDEODRIVER"] = "dummy"
+	# Colors
+	global BLACK, WHITE, RED, RED_ACTIVE, GREEN, BLUE
+
+	BLACK = (  0,   0,   0)
+	WHITE = (255, 255, 255)
+	RED = (255,   100,   100)
+	RED_ACTIVE = (255, 0, 0)
+	GREEN = (  0, 255,   0)
+	BLUE = (  0,   0, 255)
+	BLUE_ACTIVE = (  0,   0, 255)
+
 
 	#initialize game
 	pygame.init()
@@ -180,7 +144,7 @@ def main():
 		stored_active_shape = deepcopy(active_shape)
 		good_transform = False
 		while not good_transform:  
-			random_transformation(shapes,args.zoom_ratio,args.win_dim,args)            # randomly transform state 
+			random_transformation(shapes,args.zoom_ratio,args.win_dim)            # randomly transform state 
 			draw_screen(shapes,active_shape,screen)   
 			pygame.display.update()
 			targetscreen = get_screen(screen, grey_scale=True)   #store target as grey scale
@@ -204,12 +168,8 @@ def main():
 		while(status == 1):
 			iters += 1
 
-			#We are in state S
-			#Let's run our Q function on S to get Q values for all possible actions
-			qval = predict(state, model, device, args)
 
-			if (random.random() < epsilon):
-				action = np.random.randint(0,n_actions)
+			action = np.random.randint(0,n_actions)
 				action_type = 'Random'
 			else: #choose best action from Q(s,a) values
 				action = (np.argmax(qval))
@@ -276,8 +236,6 @@ def main():
 			torch.save(model,os.path.join('../models','saved_models','model_%s.pt'%str(i)))
 
 	torch.save(model,os.path.join('models','saved_models','model_%s.pt'%str(i)))
-
-
 
 
 
@@ -505,7 +463,7 @@ def translate_screen(direction, shapes, win_dim):
 		if direction == 3:
 			shape.translate((0, shape.stride))
 
-def random_transformation(shapes,zoom_ratio,win_dim,args):
+def random_transformation(shapes,zoom_ratio,win_dim):
 	active_shape = 0
 	action_list = []
 	for i in range(len(shapes)):
@@ -518,7 +476,7 @@ def random_transformation(shapes,zoom_ratio,win_dim,args):
 		s_dir = random.choice([6,7])
 		y_amount = random.randint(0,10)
 		x_amount = random.randint(0,10)
-		s_amount = random.randint(0,10)
+		s_amount = random.randint(0,5)
 		for i in range(y_amount):
 			action_list.append(y_dir)
 		for i in range(x_amount):
@@ -526,19 +484,18 @@ def random_transformation(shapes,zoom_ratio,win_dim,args):
 		for i in range(s_amount):
 			action_list.append(s_dir)
 		action_list.append(8)
-	if args.world_transforms:
-		cy_dir = random.choice([9,10])
-		cx_dir = random.choice([11,12])
-		cz_dir = random.choice([13,14])
-		cy_amount = random.randint(0,10)
-		cx_amount = random.randint(0,10)
-		cz_amount = random.randint(0,10)
-		for i in range(cy_amount):
-			action_list.append(cy_dir)
-		for i in range(cx_amount):
-			action_list.append(cx_dir)
-		for i in range(cz_amount):
-			action_list.append(cz_dir)
+	cy_dir = random.choice([9,10])
+	cx_dir = random.choice([11,12])
+	cz_dir = random.choice([13,14])
+	cy_amount = random.randint(0,10)
+	cx_amount = random.randint(0,10)
+	cz_amount = random.randint(0,10)
+	for i in range(cy_amount):
+		action_list.append(cy_dir)
+	for i in range(cx_amount):
+		action_list.append(cx_dir)
+	for i in range(cz_amount):
+		action_list.append(cz_dir)
 	#print(action_list)	
 	for i in action_list:
 		if i == 8:
