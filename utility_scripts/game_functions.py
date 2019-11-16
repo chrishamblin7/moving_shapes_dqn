@@ -321,7 +321,7 @@ def random_transformation(shapes,args, ):
 			zoom_screen('zoom_out', shapes, args)
 	print('generated random transform:')
 	print(action_list)
-
+	return action_list
 
 def makeMove(action, shapes, active_shape, screen, targetscreen, args):
 	print('action: %s'%action)
@@ -353,3 +353,34 @@ def makeMove(action, shapes, active_shape, screen, targetscreen, args):
 	currentscreen = get_screen(screen)
 	state = np.concatenate((currentscreen3d,np.array([targetscreen])))
 	return currentscreen3d, currentscreen, state, active_shape
+
+
+def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_type = 'object_param', reward_scale = 1):
+	
+	win_dim = args.win_dim
+	if reward_type == 'pix_dif':
+		contrast = currentscreen - targetscreen
+		unique, counts = np.unique(contrast, return_counts=True)
+		score = dict(zip(unique,counts))[0]
+		reward = score/currentscreen.size
+	else:
+		object_scaling = {'x':.3,'y':.3,'r':.25,'s':.15}    # relative weight for translation, rotation, and scaling importance
+		shape_scores = []
+		for i in range(len(shapes)):
+			shape = shapes[i]
+			target_shape = target_shapes[i]
+			x_dif = (args.win_dim - abs(shape.centroid[0]-target_shape.centroid[0]))/args.win_dim
+			y_dif = (args.win_dim - abs(shape.centroid[1]-target_shape.centroid[1]))/args.win_dim
+			rot_dif = (shape.num_rotations-abs(shape.rotation - target_shape.rotation))/shape.num_rotations
+			scale_dif = (win_dim**2 - abs(shape.area-target_shape.area))/win_dim**2
+			shape_score = x_dif*object_scaling['x']+y_dif*object_scaling['y']+rot_dif*object_scaling['r']+scale_dif*object_scaling['s']
+			shape_scores.append(shape_score)
+		reward = sum(shape_scores)/len(shape_scores)
+	if reward_type == 'combined':
+		contrast = currentscreen - targetscreen
+		unique, counts = np.unique(contrast, return_counts=True)
+		score = dict(zip(unique,counts))[0]
+		reward += score/currentscreen.size    #add both score types together
+		reward = reward/2
+		print('Reward: %s'%reward*reward_scale)
+	return reward*reward_scale
