@@ -59,9 +59,9 @@ def main():
 	parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
 						help='Average size of intial game shapes (default: 8)')
 	parser.add_argument('--num-shapes', type=int, default=3, metavar='NS',
-						help='Number of shapes in game (default: 4)')
+						help='Number of shapes in game (default: 3)')
 	parser.add_argument('--trans-step', type=int, default=2, metavar='TS',
-						help='Number of pixels jumped when translating shape (default: 4)')
+						help='Number of pixels jumped when translating shape (default: 2)')
 	parser.add_argument('--zoom-ratio', type=float, default=1.2, metavar='ZR',
 						help='Scaling ratio when zooming (default: 1.2)')
 	parser.add_argument('--num-rotations', type=int, default=32, metavar='NR',

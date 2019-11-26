@@ -258,7 +258,7 @@ def translate_screen(direction, shapes, args):
 		if direction == 'cam_up':
 			shape.translate((0, shape.stride))
 
-def random_transformation(shapes,args, ):
+def random_transformation(shapes,args):
 	active_shape = 0
 	action_list = []
 	
@@ -364,7 +364,7 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 		score = dict(zip(unique,counts))[0]
 		reward = score/currentscreen.size
 	else:
-		object_scaling = {'x':.3,'y':.3,'r':.25,'s':.15}    # relative weight for translation, rotation, and scaling importance
+		object_scaling = {'x':.3,'y':.3,'r':.2,'s':.2}    # relative weight for translation, rotation, and scaling importance
 		shape_scores = []
 		for i in range(len(shapes)):
 			shape = shapes[i]
