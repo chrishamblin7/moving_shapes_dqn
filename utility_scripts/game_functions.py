@@ -25,7 +25,7 @@ BLUE = (  100,   100, 255)
 BLUE_ACTIVE = (  0,   0, 255)
 
 
-action_dict = {'left':0,'right':1,'down':2,'up':3,'rot_right':4,'rot_left':5,'small':6,'big':7} # number code for different actions
+action_dict = {'left':0,'right':1,'down':2,'up':3,'rot_right':4,'rot_left':5,'smaller':6,'bigger':7,'switch_shape':8,'cam_right':9,'cam_left':10,'cam_down':11,'cam_up':12,'zoom_in':13,'zoom_out':14} # number code for different actions
 
 
 def update_parameters(screen, args):
@@ -362,7 +362,8 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 		contrast = currentscreen - targetscreen
 		unique, counts = np.unique(contrast, return_counts=True)
 		score = dict(zip(unique,counts))[0]
-		reward = score/currentscreen.size
+		R_pix_diff = score/currentscreen.size
+		return R_pix_diff*reward_scale
 	else:
 		object_scaling = {'x':.3,'y':.3,'r':.2,'s':.2}    # relative weight for translation, rotation, and scaling importance
 		shape_scores = []
@@ -375,12 +376,25 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 			scale_dif = (win_dim**2 - abs(shape.area-target_shape.area))/win_dim**2
 			shape_score = x_dif*object_scaling['x']+y_dif*object_scaling['y']+rot_dif*object_scaling['r']+scale_dif*object_scaling['s']
 			shape_scores.append(shape_score)
-		reward = sum(shape_scores)/len(shape_scores)
-	if reward_type == 'combined':
-		contrast = currentscreen - targetscreen
-		unique, counts = np.unique(contrast, return_counts=True)
-		score = dict(zip(unique,counts))[0]
-		reward += score/currentscreen.size    #add both score types together
-		reward = reward/2
-		print('Reward: %s'%reward*reward_scale)
-	return reward*reward_scale
+		R_object_param = sum(shape_scores)/len(shape_scores)
+	if reward_type == 'object_param':
+		return R_object_param*reward_scale
+
+
+	contrast = currentscreen - targetscreen
+	unique, counts = np.unique(contrast, return_counts=True)
+	score = dict(zip(unique,counts))[0]
+	R_pix_diff = score/currentscreen.size
+	R_combine = (R_object_param + R_pix_diff)/2    #add both score types together
+	if reward_type == 'combine':
+		return R_combine*reward_scale
+	else:
+		return R_combine*reward_scale,R_object_param*reward_scale,R_pix_diff*reward_scale
+
+
+def get_key(val,my_dict): 
+    for key, value in my_dict.items(): 
+         if val == value: 
+             return key 
+  
+    return "key doesn't exist"
