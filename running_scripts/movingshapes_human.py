@@ -16,6 +16,7 @@ import time
 import scipy.misc
 from pprint import pprint
 import argparse
+import pdb
 
 np.set_printoptions(threshold=np.inf)
 
@@ -52,8 +53,7 @@ BLUE = (  0,   0, 255)
 parser = argparse.ArgumentParser(description='Human playable block game')
 
 parser.add_argument('--world-transforms', action='store_true', default=False,
-					help='include world transforms (camera zoom and rotation) in \
-					available actions (default: False)')
+					help='include world transforms (camera zoom and rotation) in available actions (default: False)')
 parser.add_argument('--win-dim', type=int, default=84, metavar='WD',
 					help='window dimension, input int, win = int x int (default: 84)')
 parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
@@ -73,8 +73,7 @@ parser.add_argument('--show-window', action='store_true', default=False,
 parser.add_argument('--seed', type=int, default=2, metavar='S',
 					help='random seed (default: 2)')
 parser.add_argument('--keypad', action='store_true', default=False,
-					help='include world transforms (camera zoom and rotation) in \
-					available actions (default: False)')
+					help='include world transforms (camera zoom and rotation) in available actions (default: False)')
 
 
 args = parser.parse_args()
@@ -173,6 +172,9 @@ while running:
 		if key[pygame.K_y]: #retrieve stored state
 			shapes = deepcopy(stored_shapes)
 			active_shape = deepcopy(stored_active_shape)
+		if key[pygame.K_z]:
+			print('objective function between current shapes and stored shapes')
+			game_functions.objective_func(shapes,stored_shapes,active_shape,args)
 
 		#print
 		if key[pygame.K_p]:

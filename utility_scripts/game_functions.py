@@ -186,9 +186,9 @@ class Polygon(object):
 		if key[pygame.K_w]:
 			self.rotate('right')
 		if key[pygame.K_a]:
-			self.scale(-1)
+			self.scale('smaller')
 		if key[pygame.K_s]:
-			self.scale(1)
+			self.scale('bigger')
 
 
 	def robo_action(self,input):
@@ -209,9 +209,9 @@ class Polygon(object):
 		if input == 'rot_left':
 			self.rotate('left')
 		if input == 'smaller':
-			self.scale(-1)
+			self.scale('smaller')
 		if input == 'bigger':
-			self.scale(1)			
+			self.scale('bigger')			
 
 	def draw(self, surface, color = WHITE, width = 0):
 		draw_points_list = []    #points are not the same as draw points must be shift by win_dim/10 in each dimension as screen has boundary area
@@ -391,6 +391,17 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 	else:
 		return R_combine*reward_scale,R_object_param*reward_scale,R_pix_diff*reward_scale
 
+
+def objective_func(shapes,target_shapes, active_shape, args):         #artificial objective function
+	transform_ratios = {'d':1,'s':1/args.win_dim,'r':args.win_dim/args.num_rotations}
+	ratios = {}
+	for shape in range(len(shapes)):
+		ratios[shape] = {}
+		ratios[shape]['x'] = (shapes[shape].centroid[0] - target_shapes[shape].centroid[0])*transform_ratios['d']
+		ratios[shape]['y'] = (shapes[shape].centroid[1] - target_shapes[shape].centroid[1])*transform_ratios['d']
+		ratios[shape]['s'] = (shapes[shape].area - target_shapes[shape].area)*transform_ratios['s']
+		ratios[shape]['r'] = (shapes[shape].rotation - target_shapes[shape].rotation)*transform_ratios['r']
+	print(ratios)
 
 def get_key(val,my_dict): 
     for key, value in my_dict.items(): 
