@@ -11,7 +11,9 @@ import scipy.misc
 import random_polygon
 from math import pi, cos, sin
 from copy import deepcopy
-
+from torch import from_numpy
+from torch import nn
+import torch
 
 
 # Colors
@@ -393,15 +395,49 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 
 
 def objective_func(shapes,target_shapes, active_shape, args):         #artificial objective function
-	transform_ratios = {'d':1,'s':1/args.win_dim,'r':args.win_dim/args.num_rotations}
+	transform_ratios = {'d':1/args.win_dim,'s':1/args.win_dim**1.5,'r':1/args.num_rotations}
 	ratios = {}
 	for shape in range(len(shapes)):
 		ratios[shape] = {}
 		ratios[shape]['x'] = (shapes[shape].centroid[0] - target_shapes[shape].centroid[0])*transform_ratios['d']
 		ratios[shape]['y'] = (shapes[shape].centroid[1] - target_shapes[shape].centroid[1])*transform_ratios['d']
 		ratios[shape]['s'] = (shapes[shape].area - target_shapes[shape].area)*transform_ratios['s']
-		ratios[shape]['r'] = (shapes[shape].rotation - target_shapes[shape].rotation)*transform_ratios['r']
+		if shapes[shape].rotation < target_shapes[shape].rotation:
+			ratios[shape]['r_r'] = (target_shapes[shape].rotation - shapes[shape].rotation)*transform_ratios['r']
+			ratio[shape]['r_l'] = args.num_rotations-abs(target_shapes[shape].rotation - shapes[shape].rotation)*transform_ratios['r']
+		else:
+			ratios[shape]['r_l'] = abs((target_shapes[shape].rotation - shapes[shape].rotation))*transform_ratios['r']
+			ratios[shape]['r_r'] = args.num_rotations-abs(target_shapes[shape].rotation - shapes[shape].rotation)*transform_ratios['r']
+	next_shape = (active_shape+1)%len(shapes)
+	switch_pressure = (ratios[next_shape]['x']+ratios[next_shape]['y']+ratios[next_shape]['s']+min(ratios[next_shape]['r_l'],ratios[next_shape]['r_l']))/(ratios[active_shape]['x']+ratios[active_shape]['y']+ratios[active_shape]['s']+min(ratios[active_shape]['r_l'],ratios[active_shape]['r_l']))
+	output_vec = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0])
+	if ratios[active_shape]['x'] > 0:
+		output_vec[0] = abs(ratios[active_shape]['x'])
+	else:
+		output_vec[1] = abs(ratios[active_shape]['x'])
+	if ratios[active_shape]['y'] < 0:
+		output_vec[2] = abs(ratios[active_shape]['y'])
+	else:
+		output_vec[3] = abs(ratios[active_shape]['y'])
+	if ratios[active_shape]['r_l'] > ratios[active_shape]['r_r']:
+		output_vec[4] = ratios[active_shape]['r_r']
+	else:
+		output_vec[5] = ratios[active_shape]['r_l']
+	if ratios[active_shape]['s'] > 0:
+		output_vec[6] = abs(ratios[active_shape]['s'])
+	else:
+		output_vec[7] = abs(ratios[active_shape]['s'])
+	print(output_vec)
+	#print(output_vec/sum(output_vec))
+	output_vec = from_numpy(output_vec)
+	output_vec =output_vec.type(torch.DoubleTensor)
+	#print(output_vec)
+	m = nn.Softmax(dim=0)
+	output_vec = m(output_vec)
 	print(ratios)
+	#print(output_vec)
+#'left':0,'right':1,'down':2,'up':3,'rot_right':4,'rot_left':5,'smaller':6,'bigger':7,'switch_shape':8	
+	
 
 def get_key(val,my_dict): 
     for key, value in my_dict.items(): 
