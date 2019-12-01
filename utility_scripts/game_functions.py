@@ -395,7 +395,7 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 
 
 def objective_func(shapes,target_shapes, active_shape, args):         #artificial objective function
-	transform_ratios = {'d':1/args.win_dim,'s':1/args.win_dim**1.5,'r':1/args.num_rotations}
+	transform_ratios = {'d':1/args.win_dim,'s':1/args.win_dim**1.9,'r':1/args.num_rotations}
 	ratios = {}
 	for shape in range(len(shapes)):
 		ratios[shape] = {}
@@ -427,13 +427,10 @@ def objective_func(shapes,target_shapes, active_shape, args):         #artificia
 		output_vec[6] = abs(ratios[active_shape]['s'])
 	else:
 		output_vec[7] = abs(ratios[active_shape]['s'])
-	print(output_vec)
-	#print(output_vec/sum(output_vec))
+
 	output_vec = from_numpy(output_vec)
 	output_vec =output_vec.type(torch.DoubleTensor)
-	#print(output_vec)
-	m = nn.Softmax(dim=0)
-	output_vec = m(output_vec)
+	print(output_vec)
 	print(ratios)
 	#print(output_vec)
 #'left':0,'right':1,'down':2,'up':3,'rot_right':4,'rot_left':5,'smaller':6,'bigger':7,'switch_shape':8	
