@@ -68,7 +68,7 @@ def get_pix_ratio(npscreen):
 	else:
 		return True
 
-def get_state_image(state,args,name='none'):
+def get_state_image(state,name='none'):
 	'''utility function to save an image of the numpy 'state', to make sure it matches game display'''
 	if state.ndim == 1:
 		imarray = np.reshape(state,(int(np.sqrt(len(state))),int(np.sqrt(len(state)))))
@@ -83,9 +83,9 @@ def get_state_image(state,args,name='none'):
 	imarray[imarray > 0] = 255
 	imarray[imarray != 255] = 0
 	if name == 'none':
-		scipy.misc.imsave('images/state_%s.png'%time.time(),imarray)
+		scipy.misc.imsave('../images/state_%s.png'%time.time(),imarray)
 	else:
-		scipy.misc.imsave('images/%s'%name,imarray)
+		scipy.misc.imsave('../images/%s'%name,imarray)
 
 
 class Polygon(object):
@@ -153,6 +153,7 @@ class Polygon(object):
 		if direction == 'left':
 			self.rotation = (self.rotation-1)%self.num_rotations
 		self.points_list = self.rotations[self.rotation]
+		print(self.rotation)
 
 	def scale(self,direction):
 		if direction == 'smaller':
@@ -394,20 +395,28 @@ def getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_ty
 		return R_combine*reward_scale,R_object_param*reward_scale,R_pix_diff*reward_scale
 
 
-def objective_func(shapes,target_shapes, active_shape, args):         #artificial objective function
-	transform_ratios = {'d':1/args.win_dim,'s':1/args.win_dim**1.9,'r':1/args.num_rotations}
+
+def sigmoid(x,a=1,b=1,xs=0,ys=0):
+	return(b / (1 + np.exp(-a*(x-xs)))+ys)
+
+
+def objective_func(shapes,target_shapes, active_shape, args):        
+	#artificial objective function specifies distance for translation scaling a ratio for each object and its target
+	#each distance is normalized by its maximum possible value 
+	#transform_ratios = {'d':1/args.win_dim,'s':1/args.win_dim**1.9,'r':1/args.num_rotations}
 	ratios = {}
 	for shape in range(len(shapes)):
 		ratios[shape] = {}
-		ratios[shape]['x'] = (shapes[shape].centroid[0] - target_shapes[shape].centroid[0])*transform_ratios['d']
-		ratios[shape]['y'] = (shapes[shape].centroid[1] - target_shapes[shape].centroid[1])*transform_ratios['d']
-		ratios[shape]['s'] = (shapes[shape].area - target_shapes[shape].area)*transform_ratios['s']
-		if shapes[shape].rotation < target_shapes[shape].rotation:
-			ratios[shape]['r_r'] = (target_shapes[shape].rotation - shapes[shape].rotation)*transform_ratios['r']
-			ratio[shape]['r_l'] = args.num_rotations-abs(target_shapes[shape].rotation - shapes[shape].rotation)*transform_ratios['r']
+		ratios[shape]['x'] = (shapes[shape].centroid[0] - target_shapes[shape].centroid[0])/args.win_dim
+		ratios[shape]['y'] = (shapes[shape].centroid[1] - target_shapes[shape].centroid[1])/args.win_dim
+		#ratios[shape]['s'] = sigmoid((shapes[shape].area - target_shapes[shape].area)/target_shapes[shape].area,b=2,ys=-1)
+		if target_shapes[shape].area > shapes[shape].area:
+			print()
+			ratios[shape]['s'] = -1*sigmoid(target_shapes[shape].area/shapes[shape].area,a=.7,b=2,xs=1,ys=-1)
 		else:
-			ratios[shape]['r_l'] = abs((target_shapes[shape].rotation - shapes[shape].rotation))*transform_ratios['r']
-			ratios[shape]['r_r'] = args.num_rotations-abs(target_shapes[shape].rotation - shapes[shape].rotation)*transform_ratios['r']
+			ratios[shape]['s'] = sigmoid(shapes[shape].area/target_shapes[shape].area,a=.7,b=2,xs=1,ys=-1)
+		ratios[shape]['r_r'] = (target_shapes[shape].rotation - shapes[shape].rotation)%args.num_rotations/args.num_rotations
+		ratios[shape]['r_l'] = (shapes[shape].rotation - target_shapes[shape].rotation)%args.num_rotations/args.num_rotations
 	next_shape = (active_shape+1)%len(shapes)
 	switch_pressure = (ratios[next_shape]['x']+ratios[next_shape]['y']+ratios[next_shape]['s']+min(ratios[next_shape]['r_l'],ratios[next_shape]['r_l']))/(ratios[active_shape]['x']+ratios[active_shape]['y']+ratios[active_shape]['s']+min(ratios[active_shape]['r_l'],ratios[active_shape]['r_l']))
 	output_vec = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0])
@@ -421,17 +430,21 @@ def objective_func(shapes,target_shapes, active_shape, args):         #artificia
 		output_vec[3] = abs(ratios[active_shape]['y'])
 	if ratios[active_shape]['r_l'] > ratios[active_shape]['r_r']:
 		output_vec[4] = ratios[active_shape]['r_r']
+	elif ratios[active_shape]['r_l'] < ratios[active_shape]['r_r']:
+		output_vec[5] = ratios[active_shape]['r_l']
 	else:
 		output_vec[5] = ratios[active_shape]['r_l']
+		output_vec[4] = ratios[active_shape]['r_r']
 	if ratios[active_shape]['s'] > 0:
 		output_vec[6] = abs(ratios[active_shape]['s'])
 	else:
 		output_vec[7] = abs(ratios[active_shape]['s'])
-
+	output_vec[8] = switch_pressure
 	output_vec = from_numpy(output_vec)
 	output_vec =output_vec.type(torch.DoubleTensor)
 	print(output_vec)
 	print(ratios)
+	return ratios
 	#print(output_vec)
 #'left':0,'right':1,'down':2,'up':3,'rot_right':4,'rot_left':5,'smaller':6,'bigger':7,'switch_shape':8	
 	

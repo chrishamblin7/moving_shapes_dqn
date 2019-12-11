@@ -62,8 +62,8 @@ parser.add_argument('--num-shapes', type=int, default=3, metavar='NS',
 					help='Number of shapes in game (default: 4)')
 parser.add_argument('--trans-step', type=int, default=2, metavar='TS',
 					help='Number of pixels jumped when translating shape (default: 4)')
-parser.add_argument('--zoom-ratio', type=float, default=1.2, metavar='ZR',
-					help='Scaling ratio when zooming (default: 1.2)')
+parser.add_argument('--zoom-ratio', type=float, default=1.05, metavar='ZR',
+					help='Scaling ratio when zooming (default: 1.05)')
 parser.add_argument('--num-rotations', type=int, default=32, metavar='NR',
 					help='Number of discrete rotation positions (default: 32)')    
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -157,11 +157,11 @@ while running:
 			phase,shapes= game_functions.update_parameters(screen, args)
 		#Get Screen	
 		if key[pygame.K_g]:
-			npscreen = get_screen(screen,flatten = False, grey_scale = True)
+			npscreen = game_functions.get_screen(screen,flatten = False, grey_scale = True)
 			print(npscreen.shape)
 			print(npscreen)
-			print(get_pix_ratio(npscreen))
-			get_state_image(npscreen)
+			print(game_functions.get_pix_ratio(npscreen))
+			game_functions.get_state_image(npscreen)
 		#Random Transform
 		if key[pygame.K_t]:
 			game_functions.random_transformation(shapes,args)

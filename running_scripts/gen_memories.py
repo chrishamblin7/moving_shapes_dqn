@@ -49,17 +49,17 @@ parser.add_argument('--world-transforms', action='store_true', default=False,
 parser.add_argument('--reward-function', type=str, default='all', metavar='R',
 					help='reward function to use. choices: pix_dif (pixel difference) \
 					object_param (closeness to actual parameters of shapes, rot, trans, scale (default:all)')
-parser.add_argument('--win-dim', type=int, default=84, metavar='WD',
-					help='window dimension, input int, win = int x int (default: 84)')
+parser.add_argument('--win-dim', type=int, default=256, metavar='WD',
+					help='window dimension, input int, win = int x int (default: 256)')
 parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
 					help='Average size of intial game shapes (default: 8)')
 parser.add_argument('--num-shapes', type=int, default=2, metavar='NS',
 					help='Number of shapes in game (default: 2)')
 parser.add_argument('--trans-step', type=int, default=2, metavar='TS',
 					help='Number of pixels jumped when translating shape (default: 2)')
-parser.add_argument('--zoom-ratio', type=float, default=1.2, metavar='ZR',
+parser.add_argument('--zoom-ratio', type=float, default=1.05, metavar='ZR',
 					help='Scaling ratio when zooming (default: 1.2)')
-parser.add_argument('--num-rotations', type=int, default=32, metavar='NR',
+parser.add_argument('--num-rotations', type=int, default=64, metavar='NR',
 					help='Number of discrete rotation positions (default: 32)')    
 parser.add_argument('--no-cuda', action='store_true', default=False,
 					help='disables CUDA training')
@@ -138,10 +138,11 @@ for i in range(index, index+args.num_memories+1):
 	active_shape = deepcopy(stored_active_shape)
 	draw_screen(shapes,active_shape,screen)
 	pygame.display.update()
+	objective_values = objective_func(shapes,target_shapes,active_shape,args)
 	action_num = np.random.randint(0,n_actions)
 	action = get_key(action_num,action_dict)
 
-	memory = {'state one':state,'shapes one':shapes, 'target shapes':target_shapes,'action list':action_list,'action':action}
+	memory = {'state one':state,'objective_values':objective_values,'shapes one':shapes, 'target shapes':target_shapes,'action list':action_list,'action':action}
 
 	currentscreen3d, currentscreen, state, active_shape = makeMove(action, shapes, active_shape, screen, targetscreen,args)
 	R_combine,R_object_param,R_pix_diff = getReward(currentscreen,targetscreen, shapes, target_shapes, args, reward_type = args.reward_function)
