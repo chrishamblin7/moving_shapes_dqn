@@ -53,8 +53,8 @@ parser.add_argument('--win-dim', type=int, default=256, metavar='WD',
 					help='window dimension, input int, win = int x int (default: 256)')
 parser.add_argument('--shape-size', type=int, default=8, metavar='SS',
 					help='Average size of intial game shapes (default: 8)')
-parser.add_argument('--num-shapes', type=int, default=2, metavar='NS',
-					help='Number of shapes in game (default: 2)')
+parser.add_argument('--num-shapes', type=int, default=3, metavar='NS',
+					help='Number of shapes in game (default: 3)')
 parser.add_argument('--trans-step', type=int, default=2, metavar='TS',
 					help='Number of pixels jumped when translating shape (default: 2)')
 parser.add_argument('--zoom-ratio', type=float, default=1.05, metavar='ZR',
